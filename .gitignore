@@ -1,0 +1,6 @@
+build/
+managed_components/
+.superpowers/
+main/clock_secrets.h
+sdkconfig.old
+.DS_Store
