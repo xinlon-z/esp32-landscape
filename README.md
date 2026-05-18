@@ -91,3 +91,7 @@ The monitor log shows WiFi connection status, selected NTP server, synchronizati
 
 - USB host detection uses ESP-IDF USB Serial/JTAG connection status. A simple USB charger or power bank may not be detectable as a USB host.
 - The hardware charging status pin is not exposed to an ESP32 GPIO on this board, so the UI indicates USB host power rather than charger IC state.
+
+## License
+
+This project is released under the MIT License. See [LICENSE](LICENSE).
