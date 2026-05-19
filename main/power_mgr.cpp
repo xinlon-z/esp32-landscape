@@ -17,6 +17,8 @@ static const char* kTag           = "power_mgr";
 static const int   kDimTimeoutMs  = 20 * 1000;
 static const int   kTaskPeriodMs  = 500;
 static const int   kBatSampleEvery = 5;  // ADC read every 5 × 500 ms = 2.5 s
+static constexpr float kBatEmptyVoltage = 3.30f;
+static constexpr float kBatFullVoltage  = 4.125f;
 
 // GPIO_NUM_16 is the SYS_OUT latch line from the power management IC.
 // It is read-only and only used for status logging.
@@ -54,9 +56,10 @@ static PowerManager::State decode(uint32_t raw)
 
 int PowerManager::voltageToPercent(float v)
 {
-    if (v <= 3.30f) return 0;
-    if (v >= 4.20f) return 100;
-    return static_cast<int>(((v - 3.30f) * 100.0f / 0.90f) + 0.5f);
+    if (v <= kBatEmptyVoltage) return 0;
+    if (v >= kBatFullVoltage) return 100;
+    return static_cast<int>(((v - kBatEmptyVoltage) * 100.0f
+                             / (kBatFullVoltage - kBatEmptyVoltage)) + 0.5f);
 }
 
 // Reads ADC 8 times, averages, and applies an α=0.07 exponential filter.
