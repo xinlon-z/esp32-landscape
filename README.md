@@ -30,11 +30,15 @@ Official board documentation: [Waveshare ESP32-S3-Touch-LCD-3.49](https://docs.w
 
 ## Project Layout
 
-- `main/clock_ui.cpp` - LVGL clock UI and battery/status rendering.
-- `main/clock_net.cpp` - WiFi connection and NTP synchronization.
-- `main/main.cpp` - LCD, touch, backlight, power-state, and LVGL task setup.
-- `components/` - Board support code and sensor libraries.
-- `docs/images/` - README images and project screenshots.
+- `main/main.cpp` — Bootstrap: initialises subsystems, registers touch indev, launches clock screen.
+- `main/lvgl_port.cpp` — `LvglPort` class: LCD/QSPI hardware, LVGL init, flush, tick timer, render task (Core 0).
+- `main/touch_drv.cpp` — `TouchDriver::readCb`: AXS15231B touch read + coordinate mapping (Core 0).
+- `main/power_mgr.cpp` — `PowerManager` class: battery ADC, external-power detect, backlight dimming (Core 1).
+- `main/clock_face_screen.cpp` — `ClockFaceScreen`: LVGL seven-segment UI, date, status icons, battery gauge.
+- `main/clock_net.cpp` — `ClockNet` namespace: WiFi connection and NTP synchronisation.
+- `main/screen.h` — Abstract `Screen` base class for future UI screens.
+- `components/` — Board support code and sensor libraries.
+- `docs/images/` — README images and project screenshots.
 
 ## WiFi Configuration
 

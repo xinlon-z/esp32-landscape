@@ -1,23 +1,14 @@
-#ifndef CLOCK_NET_H
-#define CLOCK_NET_H
+#pragma once
 
-#include <stdbool.h>
+namespace ClockNet {
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+struct Status {
+    bool wifi_connected   = false;
+    bool ntp_synced       = false;
+    bool sync_in_progress = false;
+};
 
-typedef struct {
-    bool wifi_connected;
-    bool ntp_synced;
-    bool sync_in_progress;
-} clock_net_status_t;
+void   init();
+Status getStatus();
 
-void clock_net_init(void);
-clock_net_status_t clock_net_get_status(void);
-
-#ifdef __cplusplus
-}
-#endif
-
-#endif
+} // namespace ClockNet

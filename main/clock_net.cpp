@@ -237,7 +237,7 @@ void network_task(void *)
 
 } // namespace
 
-extern "C" void clock_net_init(void)
+void ClockNet::init()
 {
     if (s_wifi_event_group != nullptr) {
         return;
@@ -246,11 +246,11 @@ extern "C" void clock_net_init(void)
     xTaskCreatePinnedToCore(network_task, "clock_net", 4096, nullptr, 3, nullptr, 0);
 }
 
-extern "C" clock_net_status_t clock_net_get_status(void)
+ClockNet::Status ClockNet::getStatus()
 {
-    clock_net_status_t status = {};
-    status.wifi_connected = s_wifi_connected;
-    status.ntp_synced = s_ntp_synced;
+    Status status;
+    status.wifi_connected   = s_wifi_connected;
+    status.ntp_synced       = s_ntp_synced;
     status.sync_in_progress = s_sync_in_progress;
     return status;
 }
