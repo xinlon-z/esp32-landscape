@@ -33,16 +33,6 @@ jobs:
       - name: Create secrets stub
         run: cp main/clock_secrets_example.h main/clock_secrets.h
 
-      - name: Configure (fetches managed components)
-        run: |
-          . $IDF_PATH/export.sh
-          idf.py reconfigure
-
-      - name: Patch AXS15231B for IDF v6 (color_space → rgb_ele_order)
-        run: |
-          sed -i 's/panel_dev_config->color_space/panel_dev_config->rgb_ele_order/g' \
-            managed_components/espressif__esp_lcd_axs15231b/esp_lcd_axs15231b.c
-
       - name: Build
         run: |
           . $IDF_PATH/export.sh

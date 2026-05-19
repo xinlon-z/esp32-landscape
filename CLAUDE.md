@@ -24,8 +24,6 @@ idf.py -p /dev/cu.usbmodem111401 monitor
 
 **Before first build:** copy `main/clock_secrets_example.h` to `main/clock_secrets.h` and fill in WiFi credentials (`kWifiSsid`, `kWifiPassword`).
 
-**Known patch:** `managed_components/espressif__esp_lcd_axs15231b/esp_lcd_axs15231b.c:83` uses `panel_dev_config->rgb_ele_order` (was `color_space` in IDF v5; already patched, but the component manager may overwrite it on `idf.py update-dependencies`).
-
 There are no unit tests — this is firmware; verification is done by building and flashing.
 
 ## QEMU Simulation
