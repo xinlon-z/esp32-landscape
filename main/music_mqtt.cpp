@@ -34,6 +34,8 @@ MusicState s_state;
 bool s_has_state = false;
 uint8_t* s_pending_cover_data = nullptr;
 uint32_t s_pending_cover_size = 0;
+uint8_t* s_last_cover_data = nullptr;
+uint32_t s_last_cover_size = 0;
 
 bool writeAll(int sock, const uint8_t* data, size_t len)
 {
@@ -249,22 +251,56 @@ uint8_t* allocCover(int len)
     return data;
 }
 
+bool isJpegCover(const uint8_t* data, uint32_t size)
+{
+    return data && size >= 128 && data[0] == 0xff && data[1] == 0xd8;
+}
+
+uint8_t* copyCover(const uint8_t* data, uint32_t size)
+{
+    if (!data || size == 0 || size > kMaxCoverBytes) {
+        return nullptr;
+    }
+    uint8_t* copy = allocCover(static_cast<int>(size));
+    if (copy) {
+        memcpy(copy, data, size);
+    }
+    return copy;
+}
+
 void updateCover(uint8_t* data, uint32_t size)
 {
     if (!data || size == 0) {
         return;
     }
 
+    if (!isJpegCover(data, size)) {
+        ESP_LOGI(kTag, "ignoring non-JPEG cover payload: %lu bytes", static_cast<unsigned long>(size));
+        heap_caps_free(data);
+        return;
+    }
+
+    uint8_t* last_copy = copyCover(data, size);
     if (xSemaphoreTake(s_cover_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
         if (s_pending_cover_data) {
             heap_caps_free(s_pending_cover_data);
         }
         s_pending_cover_data = data;
         s_pending_cover_size = size;
+        if (last_copy) {
+            if (s_last_cover_data) {
+                heap_caps_free(s_last_cover_data);
+            }
+            s_last_cover_data = last_copy;
+            s_last_cover_size = size;
+        }
         xSemaphoreGive(s_cover_mutex);
         ESP_LOGI(kTag, "cover received: %lu bytes", static_cast<unsigned long>(size));
     } else {
         heap_caps_free(data);
+        if (last_copy) {
+            heap_caps_free(last_copy);
+        }
     }
 }
 
@@ -424,6 +460,27 @@ bool MusicMqtt::takeCover(CoverImage* cover)
             s_pending_cover_data = nullptr;
             s_pending_cover_size = 0;
             has_cover = true;
+        }
+        xSemaphoreGive(s_cover_mutex);
+    }
+    return has_cover;
+}
+
+bool MusicMqtt::copyLastCover(CoverImage* cover)
+{
+    if (!cover || !s_cover_mutex) {
+        return false;
+    }
+
+    bool has_cover = false;
+    if (xSemaphoreTake(s_cover_mutex, pdMS_TO_TICKS(20)) == pdTRUE) {
+        if (s_last_cover_data && s_last_cover_size > 0) {
+            uint8_t* copy = copyCover(s_last_cover_data, s_last_cover_size);
+            if (copy) {
+                cover->data = copy;
+                cover->size = s_last_cover_size;
+                has_cover = true;
+            }
         }
         xSemaphoreGive(s_cover_mutex);
     }

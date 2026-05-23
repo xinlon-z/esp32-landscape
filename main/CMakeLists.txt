@@ -8,6 +8,7 @@ idf_component_register(
        "screen_nav.cpp"
        "music_state.cpp"
        "music_background.cpp"
+       "music_visualizer.cpp"
        "music_mqtt.cpp"
        "music_player_screen.cpp"
        "screen_manager.cpp"

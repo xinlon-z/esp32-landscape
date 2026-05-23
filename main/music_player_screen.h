@@ -10,6 +10,8 @@ public:
     void destroy() override;
 
 private:
+    static constexpr int kSpectrumBarCount = 44;
+
     static void onTimer(lv_timer_t* timer);
 
     void updateUi();
@@ -29,6 +31,8 @@ private:
     lv_obj_t*  progress_ = nullptr;
     lv_obj_t*  elapsed_  = nullptr;
     lv_obj_t*  duration_ = nullptr;
+    lv_obj_t*  play_pause_icon_ = nullptr;
+    lv_obj_t*  spectrum_bars_[kSpectrumBarCount] = {};
     lv_obj_t*  background_img_ = nullptr;
     lv_obj_t*  cover_img_ = nullptr;
     lv_obj_t*  cover_band_ = nullptr;

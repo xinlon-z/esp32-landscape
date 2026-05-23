@@ -21,6 +21,7 @@ add_executable(music_ui_sim
   sim_assets.cpp
   sim_music_mqtt.cpp
   "${PROJECT_ROOT}/main/music_background.cpp"
+  "${PROJECT_ROOT}/main/music_visualizer.cpp"
   "${PROJECT_ROOT}/main/music_player_screen.cpp"
   "${PROJECT_ROOT}/main/music_state.cpp")
 

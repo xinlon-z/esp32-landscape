@@ -10,6 +10,7 @@
 #include "lvgl.h"
 #include "music_background.h"
 #include "music_mqtt.h"
+#include "music_visualizer.h"
 
 #ifdef SIM_BUILD
 #include "sim_assets.h"
@@ -33,9 +34,17 @@ constexpr uint32_t kCoverC   = 0xe7d4bb;
 constexpr int kScreenW      = 640;
 constexpr int kScreenH      = 172;
 constexpr int kCoverSize    = 144;
-constexpr int kProgressMaxW = 250;
-constexpr int kButtonSmall   = 32;
-constexpr int kButtonMain    = 52;
+constexpr int kCoverDisplaySize = 132;
+constexpr int kStageX       = 54;
+constexpr int kStageY       = 20;
+constexpr int kStageW       = 540;
+constexpr int kStageH       = 132;
+constexpr int kTextX        = 220;
+constexpr int kSpectrumX    = 220;
+constexpr int kSpectrumY    = 103;
+constexpr int kSpectrumBarW = 3;
+constexpr int kSpectrumGap  = 3;
+constexpr int kButtonMain   = 46;
 constexpr uint32_t kFramesPerSecond = 44100;
 constexpr size_t kJpegWorkBytes = 4096;
 constexpr size_t kMusicFontCacheBytes = 64 * 1024;
@@ -331,32 +340,37 @@ void MusicPlayerScreen::create()
     clearRectStyle(scrim);
     lv_obj_set_size(scrim, kScreenW, kScreenH);
     lv_obj_set_pos(scrim, 0, 0);
-    setBg(scrim, 0x040509, LV_OPA_70);
+    setBg(scrim, 0x020306, LV_OPA_50);
 
-    lv_obj_t* cover = lv_obj_create(bg);
-    lv_obj_set_size(cover, kCoverSize, kCoverSize);
-    lv_obj_set_pos(cover, 16, 14);
+    lv_obj_t* stage = lv_obj_create(bg);
+    clearRectStyle(stage);
+    lv_obj_set_size(stage, kStageW, kStageH);
+    lv_obj_set_pos(stage, kStageX, kStageY);
+
+    lv_obj_t* cover = lv_obj_create(stage);
+    lv_obj_set_size(cover, kCoverDisplaySize, kCoverDisplaySize);
+    lv_obj_set_pos(cover, 34, 0);
     clearStyle(cover);
-    lv_obj_set_style_radius(cover, 14, 0);
+    lv_obj_set_style_radius(cover, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_border_width(cover, 1, 0);
-    lv_obj_set_style_border_color(cover, lv_color_hex(0xffffff), 0);
-    lv_obj_set_style_border_opa(cover, LV_OPA_30, 0);
-    lv_obj_set_style_shadow_width(cover, 18, 0);
+    lv_obj_set_style_border_color(cover, lv_color_hex(0xd9dde3), 0);
+    lv_obj_set_style_border_opa(cover, LV_OPA_50, 0);
+    lv_obj_set_style_shadow_width(cover, 10, 0);
     lv_obj_set_style_shadow_color(cover, lv_color_hex(0x000000), 0);
     lv_obj_set_style_shadow_opa(cover, LV_OPA_30, 0);
-    lv_obj_set_style_shadow_ofs_y(cover, 7, 0);
+    lv_obj_set_style_shadow_ofs_y(cover, 4, 0);
     lv_obj_set_style_clip_corner(cover, true, 0);
     setBg(cover, kCoverB, LV_OPA_COVER);
 
     cover_band_ = lv_obj_create(cover);
-    lv_obj_set_size(cover_band_, kCoverSize, 44);
-    lv_obj_set_pos(cover_band_, 0, 100);
+    lv_obj_set_size(cover_band_, kCoverDisplaySize, 42);
+    lv_obj_set_pos(cover_band_, 0, 90);
     clearStyle(cover_band_);
     setBg(cover_band_, kCoverC, LV_OPA_80);
 
     cover_accent_ = lv_obj_create(cover);
-    lv_obj_set_size(cover_accent_, 50, 50);
-    lv_obj_set_pos(cover_accent_, 28, 24);
+    lv_obj_set_size(cover_accent_, 48, 48);
+    lv_obj_set_pos(cover_accent_, 42, 31);
     clearStyle(cover_accent_);
     lv_obj_set_style_radius(cover_accent_, LV_RADIUS_CIRCLE, 0);
     setBg(cover_accent_, kCoverA, LV_OPA_70);
@@ -366,56 +380,60 @@ void MusicPlayerScreen::create()
     lv_obj_center(cover_img_);
     lv_obj_add_flag(cover_img_, LV_OBJ_FLAG_HIDDEN);
 
-    lv_obj_t* panel = makePanel(bg, 178, 20, 286, 132, kSurface, LV_OPA_60);
-
-    lv_obj_t* panel_highlight = lv_obj_create(panel);
-    lv_obj_set_size(panel_highlight, kProgressMaxW, 1);
-    lv_obj_set_pos(panel_highlight, 18, 10);
-    clearStyle(panel_highlight);
-    setBg(panel_highlight, 0xffffff, LV_OPA_20);
-
     const lv_font_t* text_font = musicTextFont();
     const lv_font_t* small_text_font = musicSmallTextFont();
 
-    title_ = makeLabel(panel, state_.title, text_font, kText);
-    lv_obj_set_pos(title_, 16, 19);
-    lv_obj_set_size(title_, 254, 25);
+    title_ = makeLabel(stage, state_.title, text_font, kText);
+    lv_obj_set_pos(title_, kTextX, 16);
+    lv_obj_set_size(title_, 184, 31);
     lv_label_set_long_mode(title_, LV_LABEL_LONG_DOT);
 
-    subtitle_ = makeLabel(panel, "", small_text_font, kMuted);
-    lv_obj_set_pos(subtitle_, 16, 48);
-    lv_obj_set_size(subtitle_, 254, 22);
+    subtitle_ = makeLabel(stage, "", small_text_font, 0x9aa5ad);
+    lv_obj_set_pos(subtitle_, kTextX, 51);
+    lv_obj_set_size(subtitle_, 184, 22);
     lv_label_set_long_mode(subtitle_, LV_LABEL_LONG_DOT);
 
-    progress_ = lv_bar_create(panel);
-    lv_obj_set_size(progress_, kProgressMaxW, 7);
-    lv_obj_set_pos(progress_, 18, 86);
+    progress_ = lv_bar_create(stage);
+    lv_obj_set_size(progress_, 1, 1);
+    lv_obj_set_pos(progress_, 0, 0);
     clearStyle(progress_);
     lv_bar_set_range(progress_, 0, 1000);
-    lv_obj_set_style_radius(progress_, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-    lv_obj_set_style_radius(progress_, LV_RADIUS_CIRCLE, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(progress_, lv_color_hex(0xffffff), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(progress_, LV_OPA_30, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(progress_, lv_color_hex(kAccent), LV_PART_INDICATOR);
-    lv_obj_set_style_bg_opa(progress_, LV_OPA_COVER, LV_PART_INDICATOR);
+    lv_obj_add_flag(progress_, LV_OBJ_FLAG_HIDDEN);
 
-    elapsed_ = makeLabel(panel, "0:00", &lv_font_montserrat_12, kMuted);
-    lv_obj_set_pos(elapsed_, 18, 101);
-    lv_obj_set_size(elapsed_, 58, 18);
+    for (int i = 0; i < kSpectrumBarCount; ++i) {
+        lv_obj_t* bar = lv_obj_create(stage);
+        lv_obj_set_size(bar, kSpectrumBarW, 8);
+        lv_obj_set_pos(bar, kSpectrumX + i * (kSpectrumBarW + kSpectrumGap), kSpectrumY - 8);
+        clearStyle(bar);
+        lv_obj_set_style_radius(bar, 1, 0);
+        setBg(bar, 0xffffff, i < 18 ? LV_OPA_COVER : LV_OPA_30);
+        spectrum_bars_[i] = bar;
+    }
 
-    duration_ = makeLabel(panel, "0:00", &lv_font_montserrat_12, kMuted);
-    lv_obj_set_pos(duration_, 210, 101);
-    lv_obj_set_size(duration_, 58, 18);
-    lv_obj_set_style_text_align(duration_, LV_TEXT_ALIGN_RIGHT, 0);
+    elapsed_ = makeLabel(stage, "0:00", &lv_font_montserrat_12, 0x8f9aa3);
+    lv_obj_set_pos(elapsed_, kTextX, 114);
+    lv_obj_set_size(elapsed_, 46, 18);
 
-    lv_obj_t* prev = makeRoundButton(bg, 476, 63, kButtonSmall, false);
-    makePrevIcon(prev, 0xffffff);
+    duration_ = makeLabel(stage, "0:00", &lv_font_montserrat_12, 0x8f9aa3);
+    lv_obj_set_pos(duration_, kTextX + 48, 114);
+    lv_obj_set_size(duration_, 80, 18);
 
-    lv_obj_t* pause = makeRoundButton(bg, 526, 53, kButtonMain, true);
-    makePauseIcon(pause, 0x050507);
+    lv_obj_t* volume_icon = makeLabel(stage, LV_SYMBOL_VOLUME_MID, &lv_font_montserrat_12, 0x8f9aa3);
+    lv_obj_set_pos(volume_icon, 426, 113);
+    lv_obj_set_size(volume_icon, 24, 20);
 
-    lv_obj_t* next = makeRoundButton(bg, 596, 63, kButtonSmall, false);
-    makeNextIcon(next, 0xffffff);
+    lv_obj_t* audio_icon = makeLabel(stage, LV_SYMBOL_AUDIO, &lv_font_montserrat_12, 0x8f9aa3);
+    lv_obj_set_pos(audio_icon, 456, 113);
+    lv_obj_set_size(audio_icon, 24, 20);
+
+    lv_obj_t* video_icon = makeLabel(stage, LV_SYMBOL_VIDEO, &lv_font_montserrat_12, 0x8f9aa3);
+    lv_obj_set_pos(video_icon, 486, 113);
+    lv_obj_set_size(video_icon, 24, 20);
+
+    lv_obj_t* pause = makeRoundButton(stage, 450, 20, kButtonMain, true);
+    play_pause_icon_ = makeLabel(pause, LV_SYMBOL_PAUSE, &lv_font_montserrat_20, 0x050507);
+    lv_obj_set_style_text_align(play_pause_icon_, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_center(play_pause_icon_);
 
     timer_ = lv_timer_create(onTimer, 1000, this);
     updateUi();
@@ -443,7 +461,10 @@ void MusicPlayerScreen::destroy()
         heap_caps_free(stale_background_pixels_);
         stale_background_pixels_ = nullptr;
     }
-    title_ = subtitle_ = progress_ = elapsed_ = duration_ = background_img_ = cover_img_ = nullptr;
+    title_ = subtitle_ = progress_ = elapsed_ = duration_ = play_pause_icon_ = background_img_ = cover_img_ = nullptr;
+    for (lv_obj_t*& bar : spectrum_bars_) {
+        bar = nullptr;
+    }
     cover_band_ = cover_accent_ = nullptr;
     cover_dsc_ = {};
     background_dsc_ = {};
@@ -477,7 +498,27 @@ void MusicPlayerScreen::updateUi()
     const uint32_t total_frames = progressTotalFrames(state_);
     const uint32_t elapsed_frames = progressElapsedFramesForUi(state_);
     const uint32_t progress = total_frames == 0 ? 0 : (elapsed_frames * 1000u) / total_frames;
-    lv_bar_set_value(progress_, static_cast<int32_t>(progress > 1000u ? 1000u : progress), LV_ANIM_OFF);
+    const uint32_t clamped_progress = progress > 1000u ? 1000u : progress;
+    lv_bar_set_value(progress_, static_cast<int32_t>(clamped_progress), LV_ANIM_OFF);
+    for (int i = 0; i < kSpectrumBarCount; ++i) {
+        lv_obj_t* bar = spectrum_bars_[i];
+        if (!bar) {
+            continue;
+        }
+        const uint8_t h = musicVisualizerBarHeight(static_cast<uint8_t>(i),
+                                                   static_cast<uint8_t>(kSpectrumBarCount),
+                                                   clamped_progress,
+                                                   state_.playing);
+        lv_obj_set_size(bar, kSpectrumBarW, h);
+        lv_obj_set_y(bar, kSpectrumY - h);
+        setBg(bar, 0xffffff, i < static_cast<int>((clamped_progress * kSpectrumBarCount) / 1000u)
+                                  ? LV_OPA_COVER
+                                  : LV_OPA_30);
+    }
+    if (play_pause_icon_) {
+        lv_label_set_text(play_pause_icon_, state_.playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY);
+        lv_obj_center(play_pause_icon_);
+    }
 
     char elapsed[12];
     char duration[12];
@@ -495,7 +536,9 @@ void MusicPlayerScreen::updateCover()
 
     MusicMqtt::CoverImage cover;
     if (!MusicMqtt::takeCover(&cover)) {
-        return;
+        if (cover_pixels_ || !MusicMqtt::copyLastCover(&cover)) {
+            return;
+        }
     }
     if (cover.size < 128) {
         heap_caps_free(cover.data);
@@ -512,7 +555,7 @@ void MusicPlayerScreen::updateCover()
 
     lv_img_cache_invalidate_src(&cover_dsc_);
     lv_img_set_src(cover_img_, &cover_dsc_);
-    lv_img_set_zoom(cover_img_, LV_IMG_ZOOM_NONE);
+    lv_img_set_zoom(cover_img_, (kCoverDisplaySize * LV_IMG_ZOOM_NONE) / kCoverSize);
     lv_obj_center(cover_img_);
     lv_obj_clear_flag(cover_img_, LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_foreground(cover_img_);

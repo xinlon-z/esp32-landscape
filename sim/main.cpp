@@ -191,6 +191,7 @@ int main(int argc, char** argv)
     screen.create();
 
     bool running = true;
+    bool recreated = false;
     const auto start = std::chrono::steady_clock::now();
     auto last_tick = std::chrono::steady_clock::now();
     while (running) {
@@ -206,8 +207,14 @@ int main(int argc, char** argv)
             last_tick = now;
         }
         lv_timer_handler();
+        const auto run_elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
+        if (!recreated && config.recreate_at_ms > 0 && run_elapsed_ms >= config.recreate_at_ms) {
+            screen.destroy();
+            screen.create();
+            recreated = true;
+        }
         if (config.run_ms > 0 &&
-            std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count() >= config.run_ms) {
+            run_elapsed_ms >= config.run_ms) {
             running = false;
         }
         SDL_Delay(5);

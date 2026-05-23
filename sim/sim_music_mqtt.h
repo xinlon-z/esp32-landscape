@@ -12,6 +12,7 @@ struct Config {
     const char* password = "";
     const char* screenshot_path = nullptr;
     int run_ms = 0;
+    int recreate_at_ms = 0;
     bool offline = false;
 };
 
