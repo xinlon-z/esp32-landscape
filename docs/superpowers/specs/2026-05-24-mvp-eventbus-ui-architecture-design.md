@@ -28,6 +28,17 @@ Reason:
 Example:
 
 ```cpp
+#include <type_traits>
+
+enum class AppEventType {
+    ClockTimeChanged,
+    PowerStateChanged,
+    NetworkStateChanged,
+    MusicStateChanged,
+    CoverStateChanged,
+    FeatureAction,
+};
+
 struct MusicStateChangedEvent {
     uint32_t revision;
 };
@@ -36,7 +47,34 @@ struct CoverStateChangedEvent {
     uint32_t cover_id;
     CoverStatus status;
 };
+
+struct AppEvent {
+    AppEventType type;
+    union Payload {
+        ClockTimeChangedEvent clock_time;
+        PowerStateChangedEvent power_state;
+        NetworkStateChangedEvent network_state;
+        MusicStateChangedEvent music_state;
+        CoverStateChangedEvent cover_state;
+        FeatureActionEvent feature_action;
+    } payload;
+};
+
+static_assert(std::is_trivially_copyable_v<ClockTimeChangedEvent>);
+static_assert(std::is_trivially_copyable_v<PowerStateChangedEvent>);
+static_assert(std::is_trivially_copyable_v<NetworkStateChangedEvent>);
+static_assert(std::is_trivially_copyable_v<MusicStateChangedEvent>);
+static_assert(std::is_trivially_copyable_v<CoverStateChangedEvent>);
+static_assert(std::is_trivially_copyable_v<FeatureActionEvent>);
+static_assert(std::is_trivially_copyable_v<AppEvent>);
 ```
+
+Requirement:
+
+- Every `AppEvent` payload type must be trivially copyable.
+- `AppEvent` must be trivially copyable.
+- Payload types must not contain `std::string`, heap-owning containers, LVGL object pointers, or ownership-bearing handles.
+- Event processing must switch on `AppEventType` before reading the corresponding union member.
 
 ### ADR 2: Services Own Snapshots
 
@@ -47,7 +85,7 @@ Examples:
 - `TimeService` owns the latest clock snapshot.
 - `PowerService` owns the latest power snapshot.
 - `NetworkService` owns the latest WiFi/NTP snapshot.
-- `MqttService` owns the latest MQTT connection and raw message state.
+- `MqttService` owns the latest MQTT connection state and music snapshot.
 - `CoverService` owns cover loading state and cover buffers.
 
 Presenters read snapshots on `start()` and then consume lightweight events on `tick()`.
@@ -57,6 +95,25 @@ Snapshot access rule:
 - Services expose snapshot copy APIs, not mutable references.
 - Snapshot reads are protected by the service's mutex, atomic packed state, or equivalent thread-safe mechanism.
 - Presenters receive a copy and never keep pointers into service-owned snapshot storage.
+
+Concrete service mechanisms:
+
+| Service | Snapshot mechanism |
+|---|---|
+| `TimeService` | mutex + `ClockSnapshot` copy |
+| `PowerService` | `std::atomic<uint32_t>` packed state, matching the existing `PowerManager` pattern |
+| `NetworkService` | mutex + `NetworkSnapshot` copy |
+| `MqttService` | mutex + `MusicState` copy and atomic revision |
+| `CoverService` | mutex + fixed cover entry table keyed by `cover_id` |
+
+Revision rule:
+
+- Each service that publishes snapshot-change events owns a `uint32_t revision`.
+- The service increments `revision` every time it commits a new snapshot.
+- The event payload carries the committed revision.
+- The presenter stores `last_seen_revision`.
+- During `tick()`, if an event revision differs from `last_seen_revision`, the presenter reads one fresh snapshot copy and updates `last_seen_revision`.
+- Multiple queued events for the same snapshot type collapse to one render pass because the service snapshot is authoritative.
 
 Reason:
 
@@ -70,6 +127,22 @@ Decision: presenters must consume EventBus events only from the UI tick while th
 
 This is a mandatory thread-safety rule. MQTT, power, network, and cover tasks must never call presenter or view methods directly.
 
+Definition:
+
+- UI tick means `Screen::onTick()`.
+- `ScreenManager` calls `Screen::onTick()` from the LVGL render/timer path.
+- The LVGL lock is already held when `Screen::onTick()` runs.
+
+Forbidden call paths:
+
+```text
+MQTT message callback  -> presenter.tick() or presenter render method
+FreeRTOS timer callback -> presenter.tick() or presenter render method
+Power task or ISR       -> presenter method or view method
+Cover decode task       -> presenter method or view method
+Service callback        -> LVGL object mutation
+```
+
 Reason:
 
 - LVGL updates must stay on the UI side of the system.
@@ -81,6 +154,27 @@ Reason:
 Decision: views do not subscribe to `EventBus`, call services, or know about external event flow.
 
 Views only expose render methods used by presenters.
+
+Allowed interface shape:
+
+```cpp
+class ClockView {
+public:
+    void setTime(const ClockDisplayState& state);
+    void setBattery(const BatteryDisplayState& state);
+    void setNetwork(const NetworkDisplayState& state);
+    void setDimmed(bool dimmed);
+};
+```
+
+Forbidden view behavior:
+
+- No service pointers or references.
+- No calls to `EventBus::publish()` or `EventBus::poll()`.
+- No calls into MQTT, RTC, power, network, or cover services.
+- No business decisions based on cached previous business state.
+
+Views may cache the last display state only for local redraw optimization. That cache must not become feature logic.
 
 Reason:
 
@@ -102,9 +196,15 @@ Decision: `music_state.*` defines shared plain data types. `music_model.*` defin
 `music_model.*`:
 
 - Presenter-owned feature model.
+- Exists only on the UI thread.
+- Is owned by `MusicPresenter`.
 - Formats and derives presentation state such as subtitle text, progress value, time labels, and visualizer render values.
+- Holds display-state fields such as formatted elapsed time, formatted duration, progress ratio, visualizer visibility, play/pause display state, and cover display state.
+- Represents cover display state as loading, ready, error, or placeholder plus `cover_id` when applicable.
+- Is updated only by `MusicPresenter` after snapshot reads or relevant event consumption.
 - Can include `music_state.h`.
 - Is not included by services.
+- Does not include service headers.
 
 Required dependency direction:
 
@@ -171,11 +271,18 @@ Reason:
 - Presenters can still own feature behavior such as play/pause, future lyrics panels, or settings actions.
 - Avoids making `ScreenManager` subscribe to business events.
 
-### ADR 8: Services Do Not Subscribe To EventBus In The First Refactor
+### ADR 8: UI EventBus Is Not A Service-To-Service Bus
 
-Decision: for this refactor, EventBus is a service-to-UI notification path only.
+Decision: the EventBus defined in this spec is the UI EventBus. It is a service-to-UI notification path only.
 
-Service coordination uses direct service-owned tasks, existing system state, and explicit service APIs. Services publish events but do not consume EventBus events.
+Services publish UI events but do not consume the UI EventBus.
+
+Service coordination rules for the first refactor:
+
+- `MqttService` keeps its current reconnect behavior and does not subscribe to `NetworkStateChanged`.
+- `MqttService` transfers cover payload ownership through an explicit `CoverService` API because cover payloads are heavy and cannot be copied through the UI EventBus.
+- `PowerService`, `TimeService`, and `NetworkService` do not depend on feature presenters or views.
+- Services must not poll the UI EventBus.
 
 Reason:
 
@@ -185,8 +292,10 @@ Reason:
 
 Future option:
 
-- A separate service event loop can be introduced later if service-to-service decoupling becomes necessary.
-- That would require its own queue, threading contract, and tests. It must not reuse the UI EventBus consumption path implicitly.
+- A separate `ServiceEventBus` can be introduced later if service-to-service decoupling becomes necessary.
+- `ServiceEventBus` must use independent subscriber channels or independent ring buffers per service consumer.
+- `ServiceEventBus` must not share the UI EventBus queue or UI tick drain path.
+- Adding service-side event consumption requires its own threading contract and tests.
 
 ### ADR 9: CoverService Uses An Async State Machine
 
@@ -214,6 +323,14 @@ Ownership:
 - `MusicView` may receive a borrowed cover handle or buffer pointer while the active cover remains valid.
 - `MusicView` does not free cover memory.
 - `MusicPresenter` decides when to show placeholder, loading, ready, or fallback state.
+
+External behavior:
+
+- When new cover data arrives, `CoverService` assigns a new `cover_id`, sets status to `LOADING`, starts background decode or transform work, and publishes `CoverStateChangedEvent {cover_id, LOADING}`.
+- When decode succeeds, `CoverService` writes the buffer to PSRAM-backed storage, sets status to `READY`, and publishes `CoverStateChangedEvent {cover_id, READY}`.
+- When decode fails, `CoverService` sets status to `ERROR` and publishes `CoverStateChangedEvent {cover_id, ERROR}`.
+- When status is `READY`, the active cover buffer pointer remains valid until the next `cover_id` replaces it.
+- Views borrow cover buffers by `cover_id`; they do not own or free them.
 
 Reason:
 
