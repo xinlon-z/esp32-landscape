@@ -535,6 +535,9 @@ Implementation rules:
 - Events are small and copyable.
 - Multi-producer, single-consumer model: service tasks may publish, but only the UI tick polls.
 - Polling drains the queue for the active screen; irrelevant events are discarded because services retain authoritative snapshots.
+- `poll()` is non-blocking.
+- `poll()` returns `true` and writes one event when the queue is non-empty.
+- `poll()` returns `false` when the queue is empty.
 
 ## Event Types
 
@@ -588,6 +591,8 @@ Wraps `PowerManager::getState()`.
 Responsibilities:
 
 - Expose latest battery percentage, external power, and dimmed state.
+- `dimmed` is read from `PowerManager::getState()`, which already aggregates idle state and backlight PWM changes.
+- `PowerService` does not call `lcd_bl_pwm_bsp` directly.
 - Publish `PowerStateChanged` when the packed power state changes.
 - Preserve existing battery display hysteresis behavior through the presenter/model layer.
 
@@ -638,6 +643,7 @@ Responsibilities:
 `clock_presenter.*`:
 
 - Reads `TimeService`, `PowerService`, and `NetworkService` snapshots.
+- Handles `ClockTimeChanged`, `PowerStateChanged`, and `NetworkStateChanged` events.
 - Converts snapshots into view render calls.
 - Applies existing display rules:
   - invalid RTC displays `--:--`, `RTC`, and `--/--`
@@ -707,6 +713,7 @@ Responsibilities:
 - Starts on Clock.
 - Handles left/right screen navigation directly.
 - Calls `onEnter()`, `onExit()`, and `onTick()` with LVGL lock held.
+- `ScreenManager::tick()` is called from an `lv_timer` or the LVGL task loop, with the LVGL lock held, at the same cadence as `lv_timer_handler()`.
 
 `GestureManager`:
 
@@ -729,11 +736,10 @@ The migration will be done in small steps while preserving behavior.
 3. Introduce `Screen`, `ScreenManager`, and `GestureManager` under `main/app/screens`.
 4. Wrap existing Clock data reads in `TimeService`, `PowerService`, and `NetworkService`.
 5. Split `ClockFaceScreen` into `ClockScreen`, `ClockPresenter`, `ClockModel`, `ClockView`, and `SevenSegmentWidget`.
-6. Move music shared state to header-only `features/music/music_state.h` and move MQTT payload parsing to `MqttService`.
-7. Wrap MQTT state access in `MqttService`.
-8. Move cover ownership and decode/update flow into `CoverService`.
-9. Split `MusicPlayerScreen` into `MusicScreen`, `MusicPresenter`, `MusicModel`, `MusicView`, `CoverWidget`, and `VisualizerWidget`.
-10. Remove old top-level screen files once the new screens build and behave the same.
+6. Create `MqttService`: move Shairport Sync payload parsing from old music state helpers, wrap MQTT state access, expose `MusicState` snapshots, and make `features/music/music_state.h` a header-only data definition file.
+7. Move cover ownership and decode/update flow into `CoverService`.
+8. Split `MusicPlayerScreen` into `MusicScreen`, `MusicPresenter`, `MusicModel`, `MusicView`, `CoverWidget`, and `VisualizerWidget`.
+9. Remove old top-level screen files once the new screens build and behave the same.
 
 ## Testing And Verification
 
