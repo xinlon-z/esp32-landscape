@@ -28,6 +28,7 @@ Reason:
 Example:
 
 ```cpp
+#include <cstdint>
 #include <type_traits>
 
 enum class AppEventType {
@@ -46,6 +47,11 @@ struct MusicStateChangedEvent {
 struct CoverStateChangedEvent {
     uint32_t cover_id;
     CoverStatus status;
+};
+
+struct FeatureActionEvent {
+    uint8_t screen_id;
+    uint8_t action_id;
 };
 
 struct AppEvent {
@@ -184,14 +190,16 @@ Reason:
 
 ### ADR 5: `music_state` And `music_model` Have Separate Responsibilities
 
-Decision: `music_state.*` defines shared plain data types. `music_model.*` defines UI-thread view-model logic for the music feature.
+Decision: `music_state.h` defines shared plain data types. `music_model.*` defines UI-thread view-model logic for the music feature.
 
-`music_state.*`:
+`music_state.h`:
 
 - Plain data structures and enums.
 - Trivially copyable where practical.
 - Shared by services, events, and presenters.
 - Does not include `music_model.h`.
+- Header-only. There is no `music_state.cpp`.
+- Contains no parsing, formatting, service access, LVGL code, or ownership-bearing fields.
 
 `music_model.*`:
 
@@ -332,6 +340,14 @@ External behavior:
 - When status is `READY`, the active cover buffer pointer remains valid until the next `cover_id` replaces it.
 - Views borrow cover buffers by `cover_id`; they do not own or free them.
 
+Cover ID and cache rule:
+
+- `cover_id` is a monotonically increasing `uint32_t` counter owned by `CoverService`.
+- `CoverService` increments `cover_id` each time it accepts a new cover payload from `MqttService`, even if the bytes match the previous cover.
+- The first refactor uses exactly one active cover entry: the most recently accepted cover.
+- Previous cover buffers are released when a new cover payload is accepted.
+- Content-hash deduplication and multi-cover caching are out of scope for the first refactor.
+
 Reason:
 
 - Downloading, decoding, and background generation cannot run in UI tick.
@@ -382,7 +398,6 @@ main/
           seven_segment_widget.h
 
       music/
-        music_state.cpp
         music_state.h
         music_model.cpp
         music_model.h
@@ -397,7 +412,6 @@ main/
           visualizer_widget.h
 
     screens/
-      screen.cpp
       screen.h
       screen_manager.cpp
       screen_manager.h
@@ -494,12 +508,16 @@ Rules:
 - `start()` reads service snapshots and renders initial state.
 - `tick()` drains events relevant to the feature, refreshes snapshots when needed, and calls view render methods.
 - `stop()` clears transient state and prevents later rendering into a destroyed view.
+- `tick()` drains all currently available UI EventBus events in one call.
+- For each unique snapshot type with a new revision, `tick()` reads the corresponding service snapshot exactly once, regardless of how many events of that type were queued.
+- `tick()` may discard events for inactive or unrelated features because services retain authoritative snapshots for later `start()` calls.
 
 ### EventBus
 
 ```cpp
 class EventBus {
 public:
+    static EventBus& get();
     bool publish(const AppEvent& event);
     bool poll(AppEvent* event);
 };
@@ -507,6 +525,9 @@ public:
 
 Implementation rules:
 
+- `EventBus` is a process-wide singleton accessed through `EventBus::get()`.
+- Services and presenters use the singleton rather than constructing their own buses.
+- Host unit tests may replace or reset the singleton through a test-only hook, and may test `EventQueue` directly without the singleton.
 - Fixed-size ring buffer.
 - No dynamic allocation in `publish()`.
 - `event_queue.h` contains the testable ring-buffer implementation.
@@ -528,9 +549,24 @@ enum class AppEventType {
     CoverStateChanged,
     FeatureAction,
 };
+
+struct FeatureActionEvent {
+    uint8_t screen_id;
+    uint8_t action_id;
+};
 ```
 
 Navigation changes do not need EventBus events for screen switching. A passive `ScreenChanged` event can be added later for analytics or settings, but it is not part of the first refactor.
+
+`FeatureAction` is used only for feature-local user intents, such as a music play/pause button tap or future settings control action.
+
+Rules:
+
+- `GestureManager` or a view callback publishes `FeatureAction`.
+- `screen_id` identifies the target screen presenter.
+- `action_id` is interpreted by the target feature. For example, Music may define `PlayPause`, `Previous`, and `Next`.
+- Only the active screen presenter consumes matching `FeatureAction` events.
+- Navigation gestures do not use `FeatureAction`.
 
 ## Service Responsibilities
 
@@ -571,6 +607,7 @@ Owns MQTT connectivity and raw Shairport Sync ingestion currently handled in `Mu
 Responsibilities:
 
 - Connect, reconnect, subscribe, and parse MQTT packets.
+- Own Shairport Sync payload parsing that is currently near `music_state`.
 - Update latest `MusicState` snapshot.
 - Publish `MusicStateChanged`.
 - Pass cover payload ownership to `CoverService`.
@@ -625,10 +662,10 @@ Responsibilities:
 
 ### Music Feature
 
-`music_state.*`:
+`music_state.h`:
 
 - Shared playback and track state data.
-- Includes parsing helpers only if they are service/domain-level and independent of LVGL.
+- Header-only data definitions. Parsing helpers live in `MqttService` or a private service helper, not in `music_state`.
 
 `music_model.*`:
 
@@ -692,7 +729,7 @@ The migration will be done in small steps while preserving behavior.
 3. Introduce `Screen`, `ScreenManager`, and `GestureManager` under `main/app/screens`.
 4. Wrap existing Clock data reads in `TimeService`, `PowerService`, and `NetworkService`.
 5. Split `ClockFaceScreen` into `ClockScreen`, `ClockPresenter`, `ClockModel`, `ClockView`, and `SevenSegmentWidget`.
-6. Move music shared state to `features/music/music_state.*`.
+6. Move music shared state to header-only `features/music/music_state.h` and move MQTT payload parsing to `MqttService`.
 7. Wrap MQTT state access in `MqttService`.
 8. Move cover ownership and decode/update flow into `CoverService`.
 9. Split `MusicPlayerScreen` into `MusicScreen`, `MusicPresenter`, `MusicModel`, `MusicView`, `CoverWidget`, and `VisualizerWidget`.
@@ -705,7 +742,7 @@ Pure logic tests:
 - Event queue publish/poll order.
 - Event queue overflow behavior.
 - Gesture detection and screen navigation.
-- Music state parsing.
+- MQTT music payload parsing.
 - Music model progress/time formatting.
 - Clock model invalid RTC and dimming behavior.
 
