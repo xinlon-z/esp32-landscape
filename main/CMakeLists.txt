@@ -10,6 +10,7 @@ idf_component_register(
        "music_background.cpp"
        "music_visualizer.cpp"
        "music_mqtt.cpp"
+       "material_status_icons_20.c"
        "music_player_screen.cpp"
        "screen_manager.cpp"
   REQUIRES i2c_bsp i2c_equipment adc_bsp lcd_bl_pwm_bsp

@@ -11,6 +11,7 @@
 #include "music_player_icon_geometry.h"
 #include "music_background.h"
 #include "music_mqtt.h"
+#include "music_time_format.h"
 #include "music_visualizer.h"
 
 #ifdef SIM_BUILD
@@ -19,6 +20,8 @@
 extern const uint8_t noto_sans_sc_subset_ttf_start[] asm("_binary_NotoSansSCSubset_ttf_start");
 extern const uint8_t noto_sans_sc_subset_ttf_end[] asm("_binary_NotoSansSCSubset_ttf_end");
 #endif
+
+extern "C" const lv_font_t material_status_icons_20;
 
 namespace {
 constexpr const char* kTag = "music_player";
@@ -35,17 +38,25 @@ constexpr uint32_t kCoverC   = 0xe7d4bb;
 constexpr int kScreenW      = 640;
 constexpr int kScreenH      = 172;
 constexpr int kCoverSize    = 144;
-constexpr int kCoverDisplaySize = 132;
-constexpr int kStageX       = 54;
-constexpr int kStageY       = 20;
-constexpr int kStageW       = 540;
-constexpr int kStageH       = 132;
-constexpr int kTextX        = 220;
-constexpr int kSpectrumX    = 220;
-constexpr int kSpectrumY    = 103;
-constexpr int kSpectrumBarW = 3;
+constexpr int kCoverDisplaySize = 142;
+constexpr int kStageX       = 44;
+constexpr int kStageY       = 15;
+constexpr int kStageW       = 552;
+constexpr int kStageH       = 142;
+constexpr int kTextX        = 214;
+constexpr int kSpectrumX    = 214;
+constexpr int kSpectrumY    = 112;
+constexpr int kSpectrumBarW = 4;
 constexpr int kSpectrumGap  = 3;
-constexpr int kButtonMain   = 46;
+constexpr int kButtonMain   = 52;
+constexpr int kBottomIconY = 123;
+constexpr int kBottomIconBoxW = 24;
+constexpr int kBottomIconBoxH = 20;
+constexpr int kBottomIconStartX = 420;
+constexpr int kBottomIconStep = 34;
+constexpr const char* kSymbolVolumeUp = "\xEE\x81\x90"; /* Material Icons U+E050 */
+constexpr const char* kSymbolAirPlay = "\xEE\x81\x95"; /* Material Icons U+E055 */
+constexpr const char* kSymbolMusicNote = "\xEE\x90\x85"; /* Material Icons U+E405 */
 constexpr uint32_t kFramesPerSecond = 44100;
 constexpr size_t kJpegWorkBytes = 4096;
 constexpr size_t kMusicFontCacheBytes = 64 * 1024;
@@ -98,13 +109,6 @@ void setBg(lv_obj_t* obj, uint32_t color, lv_opa_t opa)
     lv_obj_set_style_bg_opa(obj, opa, 0);
 }
 
-void formatTime(uint32_t seconds, char* out, size_t out_size)
-{
-    snprintf(out, out_size, "%lu:%02lu",
-             static_cast<unsigned long>(seconds / 60u),
-             static_cast<unsigned long>(seconds % 60u));
-}
-
 lv_font_t* createMusicFont(uint16_t size)
 {
 #ifdef SIM_BUILD
@@ -126,7 +130,7 @@ lv_font_t* createMusicFont(uint16_t size)
 const lv_font_t* musicTextFont()
 {
     if (!s_music_font) {
-        s_music_font = createMusicFont(21);
+        s_music_font = createMusicFont(23);
         if (s_music_font) {
             ESP_LOGI(kTag, "NotoSansSCSubset title font ready");
         } else {
@@ -139,7 +143,7 @@ const lv_font_t* musicTextFont()
 const lv_font_t* musicSmallTextFont()
 {
     if (!s_music_font_small) {
-        s_music_font_small = createMusicFont(17);
+        s_music_font_small = createMusicFont(18);
     }
     return s_music_font_small ? s_music_font_small : &lv_font_simsun_16_cjk;
 }
@@ -148,6 +152,27 @@ void alignPlayPauseIcon(lv_obj_t* icon, bool playing)
 {
     const MusicIconOffset offset = musicPlayPauseIconOffset(playing);
     lv_obj_align(icon, LV_ALIGN_CENTER, offset.x, offset.y);
+}
+
+lv_obj_t* makeBottomIcon(lv_obj_t* parent, int index, const char* symbol,
+                         const lv_font_t* font, int y_offset = 0)
+{
+    lv_obj_t* box = lv_obj_create(parent);
+    clearStyle(box);
+    lv_obj_set_style_bg_opa(box, LV_OPA_TRANSP, 0);
+    lv_obj_set_pos(box, kBottomIconStartX + index * kBottomIconStep, kBottomIconY);
+    lv_obj_set_size(box, kBottomIconBoxW, kBottomIconBoxH);
+
+    lv_obj_t* icon = lv_label_create(box);
+    clearStyle(icon);
+    lv_label_set_text(icon, symbol);
+    lv_obj_set_style_text_font(icon, font, 0);
+    lv_obj_set_style_text_color(icon, lv_color_hex(0x8f9aa3), 0);
+    lv_obj_set_style_text_opa(icon, LV_OPA_COVER, 0);
+    lv_obj_set_style_text_align(icon, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_bg_opa(icon, LV_OPA_TRANSP, 0);
+    lv_obj_align(icon, LV_ALIGN_CENTER, 0, y_offset);
+    return box;
 }
 
 size_t jpegInput(JDEC* jd, uint8_t* buff, size_t ndata)
@@ -356,7 +381,7 @@ void MusicPlayerScreen::create()
 
     lv_obj_t* cover = lv_obj_create(stage);
     lv_obj_set_size(cover, kCoverDisplaySize, kCoverDisplaySize);
-    lv_obj_set_pos(cover, 34, 0);
+    lv_obj_set_pos(cover, 24, 0);
     clearStyle(cover);
     lv_obj_set_style_radius(cover, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_border_width(cover, 1, 0);
@@ -391,13 +416,13 @@ void MusicPlayerScreen::create()
     const lv_font_t* small_text_font = musicSmallTextFont();
 
     title_ = makeLabel(stage, state_.title, text_font, kText);
-    lv_obj_set_pos(title_, kTextX, 16);
-    lv_obj_set_size(title_, 184, 31);
+    lv_obj_set_pos(title_, kTextX, 14);
+    lv_obj_set_size(title_, 226, 34);
     lv_label_set_long_mode(title_, LV_LABEL_LONG_DOT);
 
     subtitle_ = makeLabel(stage, "", small_text_font, 0x9aa5ad);
-    lv_obj_set_pos(subtitle_, kTextX, 51);
-    lv_obj_set_size(subtitle_, 184, 22);
+    lv_obj_set_pos(subtitle_, kTextX, 50);
+    lv_obj_set_size(subtitle_, 226, 24);
     lv_label_set_long_mode(subtitle_, LV_LABEL_LONG_DOT);
 
     progress_ = lv_bar_create(stage);
@@ -417,27 +442,15 @@ void MusicPlayerScreen::create()
         spectrum_bars_[i] = bar;
     }
 
-    elapsed_ = makeLabel(stage, "0:00", &lv_font_montserrat_12, 0x8f9aa3);
-    lv_obj_set_pos(elapsed_, kTextX, 114);
-    lv_obj_set_size(elapsed_, 46, 18);
+    time_ = makeLabel(stage, "0:00/0:00", &lv_font_montserrat_14, 0x8f9aa3);
+    lv_obj_set_pos(time_, kTextX, 124);
+    lv_obj_set_size(time_, 116, 18);
 
-    duration_ = makeLabel(stage, "0:00", &lv_font_montserrat_12, 0x8f9aa3);
-    lv_obj_set_pos(duration_, kTextX + 48, 114);
-    lv_obj_set_size(duration_, 80, 18);
+    makeBottomIcon(stage, 0, kSymbolVolumeUp, &material_status_icons_20, 0);
+    makeBottomIcon(stage, 1, kSymbolMusicNote, &material_status_icons_20, 0);
+    makeBottomIcon(stage, 2, kSymbolAirPlay, &material_status_icons_20, 0);
 
-    lv_obj_t* volume_icon = makeLabel(stage, LV_SYMBOL_VOLUME_MID, &lv_font_montserrat_12, 0x8f9aa3);
-    lv_obj_set_pos(volume_icon, 426, 113);
-    lv_obj_set_size(volume_icon, 24, 20);
-
-    lv_obj_t* audio_icon = makeLabel(stage, LV_SYMBOL_AUDIO, &lv_font_montserrat_12, 0x8f9aa3);
-    lv_obj_set_pos(audio_icon, 456, 113);
-    lv_obj_set_size(audio_icon, 24, 20);
-
-    lv_obj_t* video_icon = makeLabel(stage, LV_SYMBOL_VIDEO, &lv_font_montserrat_12, 0x8f9aa3);
-    lv_obj_set_pos(video_icon, 486, 113);
-    lv_obj_set_size(video_icon, 24, 20);
-
-    lv_obj_t* pause = makeRoundButton(stage, 450, 20, kButtonMain, true);
+    lv_obj_t* pause = makeRoundButton(stage, 462, 18, kButtonMain, true);
     play_pause_icon_ = makeLabel(pause, LV_SYMBOL_PAUSE, &lv_font_montserrat_20, 0x050507);
     lv_obj_set_style_text_align(play_pause_icon_, LV_TEXT_ALIGN_CENTER, 0);
     alignPlayPauseIcon(play_pause_icon_, true);
@@ -468,7 +481,7 @@ void MusicPlayerScreen::destroy()
         heap_caps_free(stale_background_pixels_);
         stale_background_pixels_ = nullptr;
     }
-    title_ = subtitle_ = progress_ = elapsed_ = duration_ = play_pause_icon_ = background_img_ = cover_img_ = nullptr;
+    title_ = subtitle_ = progress_ = time_ = play_pause_icon_ = background_img_ = cover_img_ = nullptr;
     for (lv_obj_t*& bar : spectrum_bars_) {
         bar = nullptr;
     }
@@ -484,7 +497,7 @@ void MusicPlayerScreen::onTimer(lv_timer_t* timer)
 
 void MusicPlayerScreen::updateUi()
 {
-    if (!title_ || !subtitle_ || !progress_ || !elapsed_ || !duration_) {
+    if (!title_ || !subtitle_ || !progress_ || !time_) {
         return;
     }
 
@@ -527,12 +540,12 @@ void MusicPlayerScreen::updateUi()
         alignPlayPauseIcon(play_pause_icon_, state_.playing);
     }
 
-    char elapsed[12];
-    char duration[12];
-    formatTime(elapsed_frames / kFramesPerSecond, elapsed, sizeof(elapsed));
-    formatTime(musicDurationSeconds(state_), duration, sizeof(duration));
-    lv_label_set_text(elapsed_, elapsed);
-    lv_label_set_text(duration_, duration);
+    char time[24];
+    formatMusicTimeDisplay(elapsed_frames / kFramesPerSecond,
+                           musicDurationSeconds(state_),
+                           time,
+                           sizeof(time));
+    lv_label_set_text(time_, time);
 }
 
 void MusicPlayerScreen::updateCover()

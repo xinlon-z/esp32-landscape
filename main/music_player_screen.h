@@ -29,8 +29,7 @@ private:
     lv_obj_t*  title_    = nullptr;
     lv_obj_t*  subtitle_ = nullptr;
     lv_obj_t*  progress_ = nullptr;
-    lv_obj_t*  elapsed_  = nullptr;
-    lv_obj_t*  duration_ = nullptr;
+    lv_obj_t*  time_     = nullptr;
     lv_obj_t*  play_pause_icon_ = nullptr;
     lv_obj_t*  spectrum_bars_[kSpectrumBarCount] = {};
     lv_obj_t*  background_img_ = nullptr;
