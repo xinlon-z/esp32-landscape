@@ -44,6 +44,7 @@ int main()
     failures += expect(queue.poll(&out), "second poll should succeed");
     failures += expect(out.type == AppEventType::CoverStateChanged, "second event type mismatch");
     failures += expect(out.payload.cover_state.cover_id == 7, "cover id mismatch");
+    failures += expect(out.payload.cover_state.status == CoverStatus::Ready, "cover status mismatch");
     failures += expect(!queue.poll(&out), "queue should be empty");
 
     return failures == 0 ? 0 : 1;
