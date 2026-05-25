@@ -1,6 +1,7 @@
 #include "mqtt_service.h"
 
 #include "../core/event/event_bus.h"
+#include "../../music_mqtt.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -65,28 +66,6 @@ bool samePayload(const MusicState& left, const MusicState& right)
 }
 } // namespace
 
-namespace MusicMqtt {
-struct CoverImage {
-    uint8_t* data = nullptr;
-    uint32_t size = 0;
-};
-
-void init() __attribute__((weak));
-void init() {}
-
-bool getState(MusicState*) __attribute__((weak));
-bool getState(MusicState*)
-{
-    return false;
-}
-
-bool takeCover(CoverImage*) __attribute__((weak));
-bool takeCover(CoverImage*)
-{
-    return false;
-}
-} // namespace MusicMqtt
-
 void applyShairportField(MusicState& state, const char* field, const char* payload, size_t payload_len)
 {
     if (!field || !payload) {
@@ -129,12 +108,10 @@ MqttService& MqttService::get()
 void MqttService::init()
 {
     MusicMqtt::init();
-    refreshFromLegacy();
 }
 
 MusicState MqttService::snapshot()
 {
-    refreshFromLegacy();
     std::lock_guard<std::mutex> lock(mutex_);
     return state_;
 }
@@ -156,55 +133,37 @@ bool MqttService::takeCover(uint8_t** data, uint32_t* size)
     return true;
 }
 
-bool MqttService::applyField(const char* field, const char* payload, size_t payload_len)
+bool MqttService::applyField(const char* field, const char* payload, size_t payload_len, uint32_t last_progress_ms)
 {
     if (!field || strcmp(field, "cover") == 0) {
         return false;
     }
 
-    std::lock_guard<std::mutex> lock(mutex_);
-    MusicState next = state_;
-    applyShairportField(next, field, payload, payload_len);
-    if (strcmp(field, "ssnc/prgr") == 0) {
-        next.last_progress_ms = 0;
-    }
-    if (samePayload(state_, next)) {
-        return false;
-    }
-
-    next.revision = state_.revision + 1;
-    state_ = next;
-    publishChanged();
-    return true;
-}
-
-bool MqttService::refreshFromLegacy()
-{
-    MusicState next{};
+    uint32_t revision = 0;
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        next = state_;
+        MusicState next = state_;
+        applyShairportField(next, field, payload, payload_len);
+        if (strcmp(field, "ssnc/prgr") == 0) {
+            next.last_progress_ms = last_progress_ms;
+        }
+        if (samePayload(state_, next)) {
+            return false;
+        }
+
+        next.revision = state_.revision + 1;
+        state_ = next;
+        revision = state_.revision;
     }
 
-    if (!MusicMqtt::getState(&next)) {
-        return false;
-    }
-
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (samePayload(state_, next)) {
-        return false;
-    }
-
-    next.revision = state_.revision + 1;
-    state_ = next;
-    publishChanged();
+    publishChanged(revision);
     return true;
 }
 
-void MqttService::publishChanged()
+void MqttService::publishChanged(uint32_t revision)
 {
     AppEvent event{};
     event.type = AppEventType::MusicStateChanged;
-    event.payload.music_state.revision = state_.revision;
+    event.payload.music_state.revision = revision;
     EventBus::get().publish(event);
 }

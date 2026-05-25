@@ -8,6 +8,7 @@
 
 #include "clock_net.h"
 #include "clock_secrets.h"
+#include "app/services/mqtt_service.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -226,11 +227,14 @@ void updateState(const char* field, const char* payload, size_t payload_len)
         return;
     }
 
+    const uint32_t progress_ms = strcmp(field, "ssnc/prgr") == 0
+                                     ? static_cast<uint32_t>(xTaskGetTickCount() * portTICK_PERIOD_MS)
+                                     : 0;
+    MqttService::get().applyField(field, payload, payload_len, progress_ms);
+    const MusicState service_state = MqttService::get().snapshot();
+
     if (xSemaphoreTake(s_state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        musicStateApplyField(s_state, field, payload, payload_len);
-        if (strcmp(field, "ssnc/prgr") == 0) {
-            s_state.last_progress_ms = static_cast<uint32_t>(xTaskGetTickCount() * portTICK_PERIOD_MS);
-        }
+        s_state = service_state;
         s_has_state = true;
         xSemaphoreGive(s_state_mutex);
     }

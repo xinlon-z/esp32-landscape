@@ -13,13 +13,12 @@ public:
     void init();
     MusicState snapshot();
     bool takeCover(uint8_t** data, uint32_t* size);
-    bool applyField(const char* field, const char* payload, size_t payload_len);
+    bool applyField(const char* field, const char* payload, size_t payload_len, uint32_t last_progress_ms = 0);
 
 private:
     MqttService() = default;
 
-    bool refreshFromLegacy();
-    void publishChanged();
+    void publishChanged(uint32_t revision);
 
     mutable std::mutex mutex_;
     MusicState state_{};

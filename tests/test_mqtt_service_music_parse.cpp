@@ -3,6 +3,17 @@
 #include <stdio.h>
 #include <string.h>
 
+namespace MusicMqtt {
+void init()
+{
+}
+
+bool takeCover(CoverImage*)
+{
+    return false;
+}
+} // namespace MusicMqtt
+
 static int expect(bool condition, const char* message)
 {
     if (!condition) {
