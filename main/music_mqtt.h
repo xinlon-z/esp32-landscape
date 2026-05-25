@@ -1,6 +1,6 @@
 #pragma once
 
-#include "music_state.h"
+#include "app/features/music/music_state.h"
 
 namespace MusicMqtt {
 

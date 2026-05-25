@@ -2,7 +2,7 @@
 
 #include "app/features/music/music_presenter.h"
 #include "app/features/music/music_view.h"
-#include "screen.h"
+#include "app/screens/screen.h"
 
 class MusicScreen : public app::Screen {
 public:

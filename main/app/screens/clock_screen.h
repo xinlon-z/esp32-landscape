@@ -2,7 +2,7 @@
 
 #include "app/features/clock/clock_presenter.h"
 #include "app/features/clock/clock_view.h"
-#include "screen.h"
+#include "app/screens/screen.h"
 
 class ClockScreen : public app::Screen {
 public:

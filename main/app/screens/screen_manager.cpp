@@ -1,4 +1,4 @@
-#include "screen_manager.h"
+#include "app/screens/screen_manager.h"
 
 #include <stdint.h>
 
