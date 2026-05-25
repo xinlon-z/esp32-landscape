@@ -1,5 +1,6 @@
 #include "mqtt_service.h"
 
+#include "cover_service.h"
 #include "../core/event/event_bus.h"
 #include "../../music_mqtt.h"
 
@@ -128,9 +129,8 @@ bool MqttService::takeCover(uint8_t** data, uint32_t* size)
     if (!MusicMqtt::takeCover(&cover)) {
         return false;
     }
-    *data = cover.data;
-    *size = cover.size;
-    return true;
+    const uint32_t cover_id = CoverService::get().acceptJpeg(cover.data, cover.size);
+    return cover_id != 0;
 }
 
 bool MqttService::applyField(const char* field, const char* payload, size_t payload_len, uint32_t last_progress_ms)
