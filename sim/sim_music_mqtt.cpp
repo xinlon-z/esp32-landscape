@@ -1,5 +1,3 @@
-#include "music_mqtt.h"
-
 #include "sim_music_mqtt.h"
 
 #include <arpa/inet.h>
@@ -19,7 +17,19 @@
 
 #include "esp_heap_caps.h"
 #include "lvgl.h"
-#include "music_state.h"
+#include "app/services/mqtt_service.h"
+
+namespace MusicMqtt {
+struct CoverImage {
+    uint8_t* data = nullptr;
+    uint32_t size = 0;
+};
+
+void init();
+bool getState(MusicState* state);
+bool takeCover(CoverImage* cover);
+bool copyLastCover(CoverImage* cover);
+} // namespace MusicMqtt
 
 namespace {
 
@@ -233,12 +243,11 @@ void updateState(const char* field, const char* payload, size_t payload_len)
         return;
     }
 
+    const uint32_t progress_ms = strcmp(field, "ssnc/prgr") == 0 ? lv_tick_get() : 0;
+    MqttService::get().applyField(field, payload, payload_len, progress_ms);
     {
         std::lock_guard<std::mutex> lock(s_state_mutex);
-        musicStateApplyField(s_state, field, payload, payload_len);
-        if (strcmp(field, "ssnc/prgr") == 0) {
-            s_state.last_progress_ms = lv_tick_get();
-        }
+        s_state = MqttService::get().snapshot();
         s_has_state = true;
     }
 

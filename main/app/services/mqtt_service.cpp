@@ -2,11 +2,20 @@
 
 #include "cover_service.h"
 #include "../core/event/event_bus.h"
-#include "../../music_mqtt.h"
 
 #include <string.h>
 
 #include <mutex>
+
+namespace MusicMqtt {
+struct CoverImage {
+    uint8_t* data = nullptr;
+    uint32_t size = 0;
+};
+
+void init();
+bool takeCover(CoverImage* cover);
+} // namespace MusicMqtt
 
 namespace {
 bool samePayload(const MusicState& left, const MusicState& right)

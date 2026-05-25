@@ -1,15 +1,20 @@
 #include "music_screen.h"
 
+MusicScreen::MusicScreen() : presenter_(view_) {}
+
 void MusicScreen::onEnter()
 {
-    legacy_.create();
+    view_.create();
+    presenter_.start();
 }
 
 void MusicScreen::onExit()
 {
-    legacy_.destroy();
+    presenter_.stop();
+    view_.destroy();
 }
 
 void MusicScreen::onTick()
 {
+    presenter_.tick();
 }

@@ -23,8 +23,16 @@ add_executable(music_ui_sim
   "${PROJECT_ROOT}/main/music_background.cpp"
   "${PROJECT_ROOT}/main/music_visualizer.cpp"
   "${PROJECT_ROOT}/main/material_status_icons_20.c"
-  "${PROJECT_ROOT}/main/music_player_screen.cpp"
-  "${PROJECT_ROOT}/main/music_state.cpp")
+  "${PROJECT_ROOT}/main/app/core/event/event_bus.cpp"
+  "${PROJECT_ROOT}/main/app/features/music/music_model.cpp"
+  "${PROJECT_ROOT}/main/app/features/music/music_presenter.cpp"
+  "${PROJECT_ROOT}/main/app/features/music/music_view.cpp"
+  "${PROJECT_ROOT}/main/app/features/music/widgets/cover_widget.cpp"
+  "${PROJECT_ROOT}/main/app/features/music/widgets/visualizer_widget.cpp"
+  "${PROJECT_ROOT}/main/app/screens/music_screen.cpp"
+  "${PROJECT_ROOT}/main/app/services/cover_service.cpp"
+  "${PROJECT_ROOT}/main/app/services/mqtt_service.cpp"
+  "${PROJECT_ROOT}/main/app/ui/fonts/music_fonts.cpp")
 
 target_compile_definitions(music_ui_sim PRIVATE
   SIM_BUILD

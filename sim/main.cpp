@@ -7,8 +7,8 @@
 #include <vector>
 
 #include "lvgl.h"
-#include "music_mqtt.h"
-#include "music_player_screen.h"
+#include "app/screens/music_screen.h"
+#include "app/services/mqtt_service.h"
 #include "sim_music_mqtt.h"
 
 namespace {
@@ -185,10 +185,10 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    MusicMqtt::init();
+    MqttService::get().init();
 
-    MusicPlayerScreen screen;
-    screen.create();
+    MusicScreen screen;
+    screen.onEnter();
 
     bool running = true;
     bool recreated = false;
@@ -207,10 +207,11 @@ int main(int argc, char** argv)
             last_tick = now;
         }
         lv_timer_handler();
+        screen.onTick();
         const auto run_elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
         if (!recreated && config.recreate_at_ms > 0 && run_elapsed_ms >= config.recreate_at_ms) {
-            screen.destroy();
-            screen.create();
+            screen.onExit();
+            screen.onEnter();
             recreated = true;
         }
         if (config.run_ms > 0 &&
@@ -221,7 +222,7 @@ int main(int argc, char** argv)
     }
 
     const bool screenshot_ok = saveScreenshot(config.screenshot_path);
-    screen.destroy();
+    screen.onExit();
     destroyDisplay();
     return screenshot_ok ? 0 : 1;
 }

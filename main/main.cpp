@@ -8,8 +8,8 @@
 #include "lcd_bl_pwm_bsp.h"
 #include "lvgl.h"
 #include "lvgl_port.h"
-#include "music_mqtt.h"
 #include "power_mgr.h"
+#include "app/services/mqtt_service.h"
 #include "app/screens/screen_manager.h"
 #include "touch_drv.h"
 #include "user_config.h"
@@ -22,7 +22,7 @@ extern "C" void app_main(void)
     adc_bsp_init();
     PowerManager::init();
     ClockNet::init();
-    MusicMqtt::init();
+    MqttService::get().init();
     ESP_ERROR_CHECK(LvglPort::init());
 
     static lv_indev_drv_t indev;

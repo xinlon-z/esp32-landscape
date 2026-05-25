@@ -1,5 +1,3 @@
-#include "music_mqtt.h"
-
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
@@ -16,6 +14,18 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "lwip/netdb.h"
+
+namespace MusicMqtt {
+struct CoverImage {
+    uint8_t* data = nullptr;
+    uint32_t size = 0;
+};
+
+void init();
+bool getState(MusicState* state);
+bool takeCover(CoverImage* cover);
+bool copyLastCover(CoverImage* cover);
+} // namespace MusicMqtt
 
 namespace {
 
