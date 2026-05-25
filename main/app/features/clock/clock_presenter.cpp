@@ -11,6 +11,22 @@ void ClockPresenter::start()
 {
     running_ = true;
     model_.resetBattery();
+
+    TimeService::get().poll();
+    PowerService::get().poll();
+    NetworkService::get().poll();
+
+    AppEvent event{};
+    while (EventBus::get().poll(&event)) {
+        if (event.type == AppEventType::ClockTimeChanged) {
+            last_time_revision_ = event.payload.clock_time.revision;
+        } else if (event.type == AppEventType::PowerStateChanged) {
+            last_power_revision_ = event.payload.power_state.revision;
+        } else if (event.type == AppEventType::NetworkStateChanged) {
+            last_network_revision_ = event.payload.network_state.revision;
+        }
+    }
+
     renderAll();
 }
 
