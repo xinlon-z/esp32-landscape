@@ -19,7 +19,6 @@ MusicPresenter::MusicPresenter(MusicView& view) : view_(view) {}
 void MusicPresenter::start()
 {
     running_ = true;
-    MqttService::get().pumpPendingCover();
 
     music_state_ = MqttService::get().snapshot();
     last_music_revision_ = music_state_.revision;
@@ -41,8 +40,6 @@ void MusicPresenter::tick()
     if (!running_) {
         return;
     }
-
-    MqttService::get().pumpPendingCover();
 
     bool music_changed = false;
     bool cover_changed = false;

@@ -17,6 +17,7 @@
 
 #include "esp_heap_caps.h"
 #include "lvgl.h"
+#include "app/services/cover_service.h"
 #include "app/services/mqtt_service.h"
 
 namespace MusicMqtt {
@@ -268,6 +269,12 @@ void updateCover(uint8_t* data, uint32_t size)
         heap_caps_free(data);
         return;
     }
+    uint8_t* service_copy = static_cast<uint8_t*>(heap_caps_malloc(size, MALLOC_CAP_8BIT));
+    if (service_copy) {
+        memcpy(service_copy, data, size);
+        CoverService::get().acceptJpeg(service_copy, size);
+    }
+
     uint8_t* last_copy = static_cast<uint8_t*>(heap_caps_malloc(size, MALLOC_CAP_8BIT));
     if (last_copy) {
         memcpy(last_copy, data, size);
