@@ -9,6 +9,7 @@
 #include "clock_net.h"
 #include "clock_secrets.h"
 #include "app/services/mqtt_service.h"
+#include "app/services/cover_service.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -282,6 +283,13 @@ void updateCover(uint8_t* data, uint32_t size)
         ESP_LOGI(kTag, "ignoring non-JPEG cover payload: %lu bytes", static_cast<unsigned long>(size));
         heap_caps_free(data);
         return;
+    }
+
+    // CoverService owns the EventBus-facing cover state. Keep separate copies
+    // for legacy MusicMqtt::takeCover/copyLastCover until those callers migrate.
+    uint8_t* service_copy = copyCover(data, size);
+    if (service_copy) {
+        CoverService::get().acceptJpeg(service_copy, size);
     }
 
     uint8_t* last_copy = copyCover(data, size);

@@ -51,17 +51,17 @@ int main()
     pending_cover[2] = 0xff;
     pending_cover[3] = 0xd9;
 
-    uint8_t* data = reinterpret_cast<uint8_t*>(0x1);
-    uint32_t size = 99;
-    failures += expect(MqttService::get().takeCover(&data, &size), "takeCover should consume pending cover");
-    failures += expect(data == nullptr, "takeCover should transfer ownership to CoverService");
-    failures += expect(size == 0, "takeCover should clear caller size after transfer");
+    failures += expect(MqttService::get().pumpPendingCover(), "pumpPendingCover should consume pending cover");
 
-    CoverBuffer active = CoverService::get().active();
+    CoverState active = CoverService::get().active();
     failures += expect(active.cover_id == 1, "first cover_id should be 1");
     failures += expect(active.status == CoverStatus::Loading, "cover status should be Loading");
-    failures += expect(active.jpeg_data != nullptr, "CoverService should own jpeg bytes");
     failures += expect(active.jpeg_size == 4, "CoverService jpeg size mismatch");
+
+    BorrowedCover borrowed{};
+    failures += expect(CoverService::get().borrow(active.cover_id, &borrowed), "CoverService should lend active cover");
+    failures += expect(borrowed.jpeg_data != nullptr, "borrowed cover should expose jpeg bytes");
+    failures += expect(borrowed.jpeg_size == 4, "borrowed cover size mismatch");
 
     AppEvent event{};
     failures += expect(EventBus::get().poll(&event), "CoverService should publish CoverStateChanged");
@@ -76,7 +76,7 @@ int main()
     pending_cover[2] = 0xff;
     pending_cover[3] = 0xd9;
 
-    failures += expect(MqttService::get().takeCover(&data, &size), "second takeCover should consume pending cover");
+    failures += expect(MqttService::get().pumpPendingCover(), "second pumpPendingCover should consume pending cover");
     active = CoverService::get().active();
     failures += expect(active.cover_id == 2, "second cover_id should increment");
 
