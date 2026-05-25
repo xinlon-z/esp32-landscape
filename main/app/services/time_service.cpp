@@ -18,7 +18,7 @@ void TimeService::poll()
 {
     const RtcDateTime_t now = i2c_rtc_get();
     ClockSnapshot next{};
-    next.rtc_ok = !(now.hour > 23 || now.minute > 59 ||
+    next.rtc_ok = !(now.hour > 23 || now.minute > 59 || now.second > 59 ||
                     now.month == 0 || now.month > 12 ||
                     now.day == 0 || now.day > 31);
     next.hour = now.hour;
