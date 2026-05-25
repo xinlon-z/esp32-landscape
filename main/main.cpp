@@ -10,7 +10,7 @@
 #include "lvgl_port.h"
 #include "music_mqtt.h"
 #include "power_mgr.h"
-#include "screen_manager.h"
+#include "app/screens/screen_manager.h"
 #include "touch_drv.h"
 #include "user_config.h"
 
