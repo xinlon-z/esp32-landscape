@@ -47,6 +47,7 @@ private:
 
     static CoverState stateFromEntry(const CoverEntry& entry);
     void releaseActive();
+    CoverStatus decodeActiveJpeg(uint32_t cover_id);
     void publishChanged(uint32_t cover_id, CoverStatus status);
 
     mutable std::mutex mutex_;

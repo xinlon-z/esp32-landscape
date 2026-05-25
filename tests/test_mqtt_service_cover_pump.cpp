@@ -55,19 +55,26 @@ int main()
 
     CoverState active = CoverService::get().active();
     failures += expect(active.cover_id == 1, "first cover_id should be 1");
-    failures += expect(active.status == CoverStatus::Loading, "cover status should be Loading");
+    failures += expect(active.status == CoverStatus::Ready, "cover status should become Ready after decode");
     failures += expect(active.jpeg_size == 4, "CoverService jpeg size mismatch");
+    failures += expect(active.has_pixels, "CoverService should expose decoded pixels");
 
     BorrowedCover borrowed{};
     failures += expect(CoverService::get().borrow(active.cover_id, &borrowed), "CoverService should lend active cover");
     failures += expect(borrowed.jpeg_data != nullptr, "borrowed cover should expose jpeg bytes");
     failures += expect(borrowed.jpeg_size == 4, "borrowed cover size mismatch");
+    failures += expect(borrowed.image != nullptr, "borrowed cover should expose image descriptor");
+    failures += expect(borrowed.pixels != nullptr, "borrowed cover should expose decoded pixels");
 
     AppEvent event{};
-    failures += expect(EventBus::get().poll(&event), "CoverService should publish CoverStateChanged");
+    failures += expect(EventBus::get().poll(&event), "CoverService should publish loading CoverStateChanged");
     failures += expect(event.type == AppEventType::CoverStateChanged, "cover event type mismatch");
     failures += expect(event.payload.cover_state.cover_id == active.cover_id, "cover event id mismatch");
     failures += expect(event.payload.cover_state.status == CoverStatus::Loading, "cover event status mismatch");
+    failures += expect(EventBus::get().poll(&event), "CoverService should publish ready CoverStateChanged");
+    failures += expect(event.type == AppEventType::CoverStateChanged, "ready cover event type mismatch");
+    failures += expect(event.payload.cover_state.cover_id == active.cover_id, "ready cover event id mismatch");
+    failures += expect(event.payload.cover_state.status == CoverStatus::Ready, "ready cover event status mismatch");
 
     pending_cover_size = 4;
     pending_cover = static_cast<uint8_t*>(heap_caps_malloc(pending_cover_size, MALLOC_CAP_8BIT));
@@ -79,6 +86,7 @@ int main()
     failures += expect(MqttService::get().pumpPendingCover(), "second pumpPendingCover should consume pending cover");
     active = CoverService::get().active();
     failures += expect(active.cover_id == 2, "second cover_id should increment");
+    failures += expect(active.status == CoverStatus::Ready, "second cover should become Ready");
 
     CoverService::get().clear();
     return failures == 0 ? 0 : 1;

@@ -62,18 +62,25 @@ int main()
 
     CoverState active = CoverService::get().active();
     failures += expect(active.cover_id == 1, "cover ingest should assign first cover_id");
-    failures += expect(active.status == CoverStatus::Loading, "cover ingest should set Loading");
+    failures += expect(active.status == CoverStatus::Ready, "cover ingest should decode to Ready");
     failures += expect(active.jpeg_size == 128, "cover ingest size mismatch");
+    failures += expect(active.has_pixels, "cover ingest should expose decoded pixels");
 
     BorrowedCover borrowed{};
     failures += expect(CoverService::get().borrow(active.cover_id, &borrowed), "cover ingest should lend active cover");
     failures += expect(borrowed.jpeg_data != nullptr, "cover ingest should expose borrowed bytes");
     failures += expect(borrowed.jpeg_size == 128, "borrowed cover ingest size mismatch");
+    failures += expect(borrowed.image != nullptr, "cover ingest should expose image descriptor");
+    failures += expect(borrowed.pixels != nullptr, "cover ingest should expose decoded pixels");
 
-    failures += expect(EventBus::get().poll(&event), "cover ingest should publish CoverStateChanged");
+    failures += expect(EventBus::get().poll(&event), "cover ingest should publish loading CoverStateChanged");
     failures += expect(event.type == AppEventType::CoverStateChanged, "cover ingest event type mismatch");
     failures += expect(event.payload.cover_state.cover_id == active.cover_id, "cover ingest event id mismatch");
     failures += expect(event.payload.cover_state.status == CoverStatus::Loading, "cover ingest event status mismatch");
+    failures += expect(EventBus::get().poll(&event), "cover ingest should publish ready CoverStateChanged");
+    failures += expect(event.type == AppEventType::CoverStateChanged, "cover ready event type mismatch");
+    failures += expect(event.payload.cover_state.cover_id == active.cover_id, "cover ready event id mismatch");
+    failures += expect(event.payload.cover_state.status == CoverStatus::Ready, "cover ready event status mismatch");
 
     CoverService::get().clear();
     return failures == 0 ? 0 : 1;

@@ -83,10 +83,10 @@ int main()
                        "tick should not pump pending covers");
     failures += expect(render_count >= 2, "presenter should render on start and tick");
     failures += expect(cover_placeholder_count >= 1, "start should render cover snapshot");
-    failures += expect(cover_placeholder_count > placeholder_before_cover_event,
-                       "tick should respond to cover events by reading CoverService state");
-    failures += expect(cover_render_count == 0,
-                       "loading cover without service-owned pixels should keep placeholder");
+    failures += expect(cover_placeholder_count == placeholder_before_cover_event,
+                       "ready cover should not render another placeholder");
+    failures += expect(cover_render_count == 1,
+                       "tick should render decoded service-owned cover");
 
     presenter.stop();
     CoverService::get().clear();
