@@ -1,5 +1,7 @@
 #pragma once
 
+namespace app {
+
 class Screen {
 public:
     virtual ~Screen() = default;
@@ -7,3 +9,5 @@ public:
     virtual void onExit() = 0;
     virtual void onTick() = 0;
 };
+
+} // namespace app

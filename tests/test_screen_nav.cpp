@@ -24,6 +24,44 @@ static int expectNext(const char* name, ScreenId current, SwipeDirection directi
     return 0;
 }
 
+static int expectFeatureActionEvent()
+{
+    constexpr uint8_t kActionId = 7;
+
+    EventBus::get().resetForTest();
+    publishFeatureAction(ScreenId::Music, kActionId);
+
+    AppEvent event{};
+    if (!EventBus::get().poll(&event)) {
+        printf("feature action event missing\n");
+        return 1;
+    }
+    if (event.type != AppEventType::FeatureAction) {
+        printf("feature action expected type %d got %d\n",
+               static_cast<int>(AppEventType::FeatureAction),
+               static_cast<int>(event.type));
+        return 1;
+    }
+    if (event.payload.feature_action.screen_id != static_cast<uint8_t>(ScreenId::Music)) {
+        printf("feature action expected screen %d got %d\n",
+               static_cast<int>(ScreenId::Music),
+               static_cast<int>(event.payload.feature_action.screen_id));
+        return 1;
+    }
+    if (event.payload.feature_action.action_id != kActionId) {
+        printf("feature action expected action %d got %d\n",
+               static_cast<int>(kActionId),
+               static_cast<int>(event.payload.feature_action.action_id));
+        return 1;
+    }
+    if (EventBus::get().poll(&event)) {
+        printf("feature action queue not empty\n");
+        return 1;
+    }
+
+    return 0;
+}
+
 int main()
 {
     int failures = 0;
@@ -55,6 +93,7 @@ int main()
         printf("detector reset failed\n");
         failures++;
     }
+    failures += expectFeatureActionEvent();
 
     return failures == 0 ? 0 : 1;
 }
