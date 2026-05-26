@@ -81,8 +81,6 @@ void MusicPresenter::tick()
 
     renderMusic();
     if (cover_changed) {
-        ESP_LOGI("music_pre", "[trace] cover %u render status=%d",
-                 last_cover_id_, static_cast<int>(last_cover_status_));
         renderCover();
     }
 }
@@ -107,13 +105,22 @@ void MusicPresenter::renderCover()
     last_cover_id_ = cover.cover_id;
     last_cover_status_ = cover.status;
 
-    if (cover.cover_id == 0 || cover.status != CoverStatus::Ready || !cover.has_pixels) {
+    if (cover.cover_id == 0) {
+        // No cover at all — show placeholder.
         view_.renderCoverPlaceholder();
+        return;
+    }
+    if (cover.status != CoverStatus::Ready || !cover.has_pixels) {
+        // Cover is loading or errored. Keep the previous cover visible rather
+        // than blanking to a placeholder — the display looks better with a
+        // stale cover than with nothing while the new JPEG decodes.
         return;
     }
 
     BorrowedCover borrowed{};
     if (CoverService::get().borrow(cover.cover_id, &borrowed) && borrowed.image) {
+        ESP_LOGI("music_pre", "[trace] cover %u render status=%d",
+                 last_cover_id_, static_cast<int>(last_cover_status_));
         view_.renderCover(borrowed);
     } else {
         view_.renderCoverPlaceholder();
