@@ -105,7 +105,10 @@ uint32_t MusicPresenter::elapsedFramesForUi(const MusicState& state) const
 
     uint32_t elapsed = state.progress_current_frame - state.progress_start_frame;
     if (state.playing && state.last_progress_ms != 0) {
-        elapsed += (lv_tick_elaps(state.last_progress_ms) * kFramesPerSecond) / 1000u;
+        const uint32_t ms = lv_tick_elaps(state.last_progress_ms);
+        const uint32_t whole_s = ms / 1000u;
+        const uint32_t frac_ms = ms - whole_s * 1000u;
+        elapsed += whole_s * kFramesPerSecond + (frac_ms * kFramesPerSecond) / 1000u;
     }
     return elapsed > total ? total : elapsed;
 }

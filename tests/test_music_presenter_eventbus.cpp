@@ -11,6 +11,7 @@ int render_count = 0;
 int cover_placeholder_count = 0;
 int cover_render_count = 0;
 int take_cover_count = 0;
+MusicDisplayState last_rendered{};
 } // namespace
 
 namespace MusicMqtt {
@@ -29,7 +30,11 @@ bool takeCover(CoverImage*)
 
 void MusicView::create() {}
 void MusicView::destroy() {}
-void MusicView::render(const MusicDisplayState&) { ++render_count; }
+void MusicView::render(const MusicDisplayState& state)
+{
+    ++render_count;
+    last_rendered = state;
+}
 void MusicView::renderCover(const BorrowedCover&) { ++cover_render_count; }
 void MusicView::renderCoverPlaceholder() { ++cover_placeholder_count; }
 
@@ -84,5 +89,53 @@ TEST(MusicPresenterEventBus, TickAndCoverRender)
         << "tick should render decoded service-owned cover";
 
     presenter.stop();
+    CoverService::get().clear();
+}
+
+// Reproduces the bug where, with a 32-bit-only multiplication, the wall-clock
+// portion of elapsed frames overflows after ~97 s and the displayed time
+// snaps back to ~0:00 mid-song. Drives the presenter through MqttService
+// state so we exercise the public render path; verifies the rendered time
+// reflects the wall-clock advance even at long elapsed offsets.
+TEST(MusicPresenterEventBus, ElapsedFramesNoOverflowAtLongPlayback)
+{
+    EventBus::get().resetForTest();
+    CoverService::get().clear();
+
+    constexpr uint32_t kFrameRate = 44100u;
+    constexpr uint32_t kStart = 1000u;
+    constexpr uint32_t kEnd = kStart + 240u * kFrameRate;  // 4-minute song
+
+    char prgr[64];
+    snprintf(prgr, sizeof(prgr), "%u/%u/%u", kStart, kStart, kEnd);
+    constexpr uint32_t kPrgrTickMs = 100;
+    MqttService::get().applyField("ssnc/prgr", prgr, strlen(prgr), kPrgrTickMs);
+    MqttService::get().applyField("playing", "true", 4);
+
+    MusicView view;
+    MusicPresenter presenter(view);
+    presenter.start();
+
+    auto secondsAt = [&](uint32_t elapsed_ms) -> uint32_t {
+        lvTickElapsStubValue() = elapsed_ms;
+        presenter.tick();
+        const char* slash = strchr(last_rendered.time, '/');
+        if (!slash) {
+            return UINT32_MAX;
+        }
+        unsigned mm = 0, ss = 0;
+        sscanf(last_rendered.time, "%u:%u", &mm, &ss);
+        return mm * 60u + ss;
+    };
+
+    EXPECT_EQ(secondsAt(60000), 60u) << "60 s in: should display 1:00";
+    EXPECT_EQ(secondsAt(97000), 97u) << "97 s in: just before the 32-bit overflow boundary";
+    EXPECT_EQ(secondsAt(97500), 97u)
+        << "97.5 s in: with 64-bit math elapsed must keep climbing, not snap to ~0";
+    EXPECT_EQ(secondsAt(120000), 120u) << "2 min in: time must reflect wall-clock advance";
+    EXPECT_EQ(secondsAt(180000), 180u) << "3 min in: must not have wrapped";
+
+    presenter.stop();
+    lvTickElapsStubValue() = 0;
     CoverService::get().clear();
 }

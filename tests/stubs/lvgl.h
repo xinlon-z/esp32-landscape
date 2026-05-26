@@ -33,7 +33,13 @@ static inline unsigned int lv_color_to32(lv_color_t color)
     return (r << 16) | (g << 8) | b;
 }
 
-static inline uint32_t lv_tick_elaps(uint32_t) { return 0; }
+inline uint32_t& lvTickElapsStubValue()
+{
+    static uint32_t value = 0;
+    return value;
+}
+
+static inline uint32_t lv_tick_elaps(uint32_t) { return lvTickElapsStubValue(); }
 
 // LVGL async / timer / cache stubs. The host harness records these calls so
 // tests can assert on dispatch ordering without actually running an LVGL loop.
