@@ -24,7 +24,6 @@ struct CoverImage {
 void init();
 bool getState(MusicState* state);
 bool takeCover(CoverImage* cover);
-bool copyLastCover(CoverImage* cover);
 } // namespace MusicMqtt
 
 namespace {
@@ -46,8 +45,6 @@ MusicState s_state;
 bool s_has_state = false;
 uint8_t* s_pending_cover_data = nullptr;
 uint32_t s_pending_cover_size = 0;
-uint8_t* s_last_cover_data = nullptr;
-uint32_t s_last_cover_size = 0;
 
 bool writeAll(int sock, const uint8_t* data, size_t len)
 {
@@ -295,34 +292,23 @@ void updateCover(uint8_t* data, uint32_t size)
         return;
     }
 
-    // CoverService owns the EventBus-facing cover state. Keep separate copies
-    // for legacy MusicMqtt::takeCover/copyLastCover until those callers migrate.
+    // CoverService owns the EventBus-facing cover state; MusicMqtt::takeCover
+    // gives mqtt_service.cpp ownership of the raw bytes for the pending slot.
     uint8_t* service_copy = copyCover(data, size);
     if (service_copy) {
         CoverService::get().acceptJpeg(service_copy, size);
     }
 
-    uint8_t* last_copy = copyCover(data, size);
     if (xSemaphoreTake(s_cover_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
         if (s_pending_cover_data) {
             heap_caps_free(s_pending_cover_data);
         }
         s_pending_cover_data = data;
         s_pending_cover_size = size;
-        if (last_copy) {
-            if (s_last_cover_data) {
-                heap_caps_free(s_last_cover_data);
-            }
-            s_last_cover_data = last_copy;
-            s_last_cover_size = size;
-        }
         xSemaphoreGive(s_cover_mutex);
         ESP_LOGI(kTag, "cover received: %lu bytes", static_cast<unsigned long>(size));
     } else {
         heap_caps_free(data);
-        if (last_copy) {
-            heap_caps_free(last_copy);
-        }
     }
 }
 
@@ -488,23 +474,3 @@ bool MusicMqtt::takeCover(CoverImage* cover)
     return has_cover;
 }
 
-bool MusicMqtt::copyLastCover(CoverImage* cover)
-{
-    if (!cover || !s_cover_mutex) {
-        return false;
-    }
-
-    bool has_cover = false;
-    if (xSemaphoreTake(s_cover_mutex, pdMS_TO_TICKS(20)) == pdTRUE) {
-        if (s_last_cover_data && s_last_cover_size > 0) {
-            uint8_t* copy = copyCover(s_last_cover_data, s_last_cover_size);
-            if (copy) {
-                cover->data = copy;
-                cover->size = s_last_cover_size;
-                has_cover = true;
-            }
-        }
-        xSemaphoreGive(s_cover_mutex);
-    }
-    return has_cover;
-}

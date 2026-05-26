@@ -12,6 +12,6 @@ struct CoverImage {
 void init();
 bool getState(MusicState* state);
 bool takeCover(CoverImage* cover);
-bool copyLastCover(CoverImage* cover);
+
 
 } // namespace MusicMqtt

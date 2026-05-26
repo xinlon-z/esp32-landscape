@@ -29,7 +29,6 @@ struct CoverImage {
 void init();
 bool getState(MusicState* state);
 bool takeCover(CoverImage* cover);
-bool copyLastCover(CoverImage* cover);
 } // namespace MusicMqtt
 
 namespace {
@@ -49,8 +48,6 @@ MusicState s_state;
 bool s_has_state = false;
 uint8_t* s_pending_cover_data = nullptr;
 uint32_t s_pending_cover_size = 0;
-uint8_t* s_last_cover_data = nullptr;
-uint32_t s_last_cover_size = 0;
 
 bool writeAll(int sock, const uint8_t* data, size_t len)
 {
@@ -275,10 +272,6 @@ void updateCover(uint8_t* data, uint32_t size)
         CoverService::get().acceptJpeg(service_copy, size);
     }
 
-    uint8_t* last_copy = static_cast<uint8_t*>(heap_caps_malloc(size, MALLOC_CAP_8BIT));
-    if (last_copy) {
-        memcpy(last_copy, data, size);
-    }
     {
         std::lock_guard<std::mutex> lock(s_cover_mutex);
         if (s_pending_cover_data) {
@@ -286,13 +279,6 @@ void updateCover(uint8_t* data, uint32_t size)
         }
         s_pending_cover_data = data;
         s_pending_cover_size = size;
-        if (last_copy) {
-            if (s_last_cover_data) {
-                heap_caps_free(s_last_cover_data);
-            }
-            s_last_cover_data = last_copy;
-            s_last_cover_size = size;
-        }
     }
     std::cerr << "mqtt cover=" << size << " bytes\n";
 }
@@ -547,24 +533,5 @@ bool MusicMqtt::takeCover(CoverImage* cover)
     cover->size = s_pending_cover_size;
     s_pending_cover_data = nullptr;
     s_pending_cover_size = 0;
-    return true;
-}
-
-bool MusicMqtt::copyLastCover(CoverImage* cover)
-{
-    if (!cover) {
-        return false;
-    }
-    std::lock_guard<std::mutex> lock(s_cover_mutex);
-    if (!s_last_cover_data || s_last_cover_size == 0) {
-        return false;
-    }
-    uint8_t* copy = static_cast<uint8_t*>(heap_caps_malloc(s_last_cover_size, MALLOC_CAP_8BIT));
-    if (!copy) {
-        return false;
-    }
-    memcpy(copy, s_last_cover_data, s_last_cover_size);
-    cover->data = copy;
-    cover->size = s_last_cover_size;
     return true;
 }
