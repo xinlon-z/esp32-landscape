@@ -3,9 +3,12 @@
 #include "app/features/music/widgets/background_blur_service.h"
 #include "app/services/cover_service.h"
 
+#include "esp_log.h"
+
 namespace {
 constexpr int kScreenW = 640;
 constexpr int kScreenH = 172;
+constexpr const char* kTraceTag = "bg_widget";
 } // namespace
 
 BackgroundWidget::BackgroundWidget()
@@ -41,7 +44,10 @@ void BackgroundWidget::renderCover(const BorrowedCover& cover)
 
     requested_cover_id_ = cover.cover_id;
     const lv_img_dsc_t* image = nullptr;
-    if (BackgroundBlurService::get().request(cover, kScreenW, kScreenH, &image) && image) {
+    const bool cache_hit = BackgroundBlurService::get().request(cover, kScreenW, kScreenH, &image);
+    ESP_LOGI(kTraceTag, "[trace] renderCover cover=%u displayed=%u cache_hit=%d",
+             cover.cover_id, displayed_cover_id_, cache_hit ? 1 : 0);
+    if (cache_hit && image) {
         applyCachedImage(image);
         displayed_cover_id_ = cover.cover_id;
         return;
@@ -71,6 +77,9 @@ void BackgroundWidget::clear()
 void BackgroundWidget::onBlurReady(uint32_t cover_id, void* user_data)
 {
     auto* self = static_cast<BackgroundWidget*>(user_data);
+    ESP_LOGI(kTraceTag, "[trace] onBlurReady cover=%u image_obj=%p requested=%u",
+             cover_id, self ? self->image_obj_ : nullptr,
+             self ? self->requested_cover_id_ : 0);
     if (!self || !self->image_obj_) {
         return;
     }

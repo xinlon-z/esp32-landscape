@@ -4,6 +4,9 @@
 #include "app/services/cover_service.h"
 #include "app/services/mqtt_service.h"
 #include "app/services/power_service.h"
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "lvgl.h"
 
 namespace {
@@ -69,6 +72,8 @@ void MusicPresenter::tick()
     if (music_changed) {
         music_state_ = MqttService::get().snapshot();
         last_music_revision_ = music_state_.revision;
+        ESP_LOGI("music_pre", "[trace] music rev=%u rendered (title=%s)",
+                 music_state_.revision, music_state_.title);
     }
     if (power_changed) {
         syncDimState();
@@ -76,6 +81,8 @@ void MusicPresenter::tick()
 
     renderMusic();
     if (cover_changed) {
+        ESP_LOGI("music_pre", "[trace] cover %u render status=%d",
+                 last_cover_id_, static_cast<int>(last_cover_status_));
         renderCover();
     }
 }

@@ -206,9 +206,14 @@ void BackgroundBlurService::taskLoop()
                 continue;
             }
 
+            const uint32_t t_blur_start = static_cast<uint32_t>(xTaskGetTickCount()) * portTICK_PERIOD_MS;
             const bool ok = musicGenerateBlurredBackground(
                 job.src_pixels, job.src_w, job.src_h,
                 out_pixels, job.target_w, job.target_h, scratch_);
+            const uint32_t t_blur_elapsed =
+                (static_cast<uint32_t>(xTaskGetTickCount()) * portTICK_PERIOD_MS) - t_blur_start;
+            ESP_LOGI(kTag, "[trace] blur cover=%u took %u ms ok=%d",
+                     job.cover_id, t_blur_elapsed, ok ? 1 : 0);
             if (!ok) {
                 heap_caps_free(out_pixels);
                 freeJob(&job);
@@ -265,6 +270,7 @@ void BackgroundBlurService::onAsyncReady(void* user_data)
     ud = svc->ready_user_data_;
     need_free = svc->stale_.pixels != nullptr;
     xSemaphoreGive(svc->mutex_);
+    ESP_LOGI(kTag, "[trace] async ready cover=%u stale_alive=%d", cover_id, need_free ? 1 : 0);
     if (cb) {
         cb(cover_id, ud);
     }

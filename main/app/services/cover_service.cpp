@@ -4,6 +4,8 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "extra/libs/sjpg/tjpgd.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 #include <string.h>
 
@@ -132,8 +134,13 @@ uint32_t CoverService::acceptJpeg(uint8_t* data, uint32_t size)
         active_.jpeg_size = size;
     }
 
+    const uint32_t t_start = static_cast<uint32_t>(xTaskGetTickCount()) * portTICK_PERIOD_MS;
+    ESP_LOGI(kTag, "[trace] cover %u accepted (%u bytes), decode start", cover_id, static_cast<unsigned>(size));
     publishChanged(cover_id, CoverStatus::Loading);
     const CoverStatus decoded_status = decodeActiveJpeg(cover_id);
+    const uint32_t t_elapsed = (static_cast<uint32_t>(xTaskGetTickCount()) * portTICK_PERIOD_MS) - t_start;
+    ESP_LOGI(kTag, "[trace] cover %u decode done in %u ms, status=%d",
+             cover_id, t_elapsed, static_cast<int>(decoded_status));
     publishChanged(cover_id, decoded_status);
     return cover_id;
 }
