@@ -47,21 +47,88 @@ jobs:
             0x8000 build/partition_table/partition-table.bin \
             0x10000 build/landscape_clock.bin
 
-      - name: Stage release files
+      - name: Package release
         run: |
+          VERSION="${{ github.ref_name }}"
+          ZIP="landscape_clock-${VERSION}.zip"
+
           mkdir dist
-          cp build/landscape_clock.bin                      dist/
-          cp build/landscape_clock-merged.bin               dist/
-          cp build/bootloader/bootloader.bin                dist/
-          cp build/partition_table/partition-table.bin      dist/
-          cp build/flash_args                               dist/
+          cp build/landscape_clock.bin                    dist/landscape_clock.bin
+          cp build/landscape_clock-merged.bin             dist/landscape_clock-merged.bin
+          cp build/bootloader/bootloader.bin              dist/bootloader.bin
+          cp build/partition_table/partition-table.bin    dist/partition-table.bin
+          # Strip build-directory prefixes so flash_args works from the ZIP root
+          sed 's|[^ ]*/||g' build/flash_args            > dist/flash_args
+
+          cd dist
+          sha256sum landscape_clock-merged.bin landscape_clock.bin \
+                    bootloader.bin partition-table.bin > sha256sums.txt
+
+          cat > README.txt << READEOF
+Landscape Clock Firmware ${VERSION}
+===================================
+
+Target hardware : Waveshare ESP32-S3-Touch-LCD-3.49
+ESP-IDF version : v6.0.1
+
+REQUIREMENTS
+------------
+  Python 3 with esptool:  pip install esptool
+
+
+FLASHING
+--------
+
+Full installation or factory reset (recommended for first-time setup):
+  Writes bootloader, partition table, and application in a single pass.
+
+  esptool.py --chip esp32s3 -b 460800 \\
+      --before default-reset --after hard-reset \\
+      write_flash --flash-mode dio --flash-size 16MB --flash-freq 80m \\
+      0x0 landscape_clock-merged.bin
+
+Application update only (preserves NVS partition and Wi-Fi credentials):
+
+  esptool.py --chip esp32s3 -b 460800 \\
+      --before default-reset --after hard-reset \\
+      write_flash 0x10000 landscape_clock.bin
+
+Scripted flash using the included argument file:
+
+  esptool.py --chip esp32s3 -b 460800 \\
+      --before default-reset --after hard-reset \\
+      write_flash @flash_args
+
+
+FILES
+-----
+  landscape_clock-merged.bin   Full image: bootloader + partition table + app
+  landscape_clock.bin          Application partition only
+  bootloader.bin               Second-stage bootloader
+  partition-table.bin          Partition table
+  flash_args                   write_flash arguments (paths relative to this dir)
+  sha256sums.txt               SHA-256 checksums for all binary files
+
+
+CHECKSUM VERIFICATION
+---------------------
+  sha256sum -c sha256sums.txt
+READEOF
+
+          python3 -m zipfile -c "../${ZIP}" README.txt sha256sums.txt \
+              landscape_clock-merged.bin landscape_clock.bin \
+              bootloader.bin partition-table.bin flash_args
+          cd ..
+          sha256sum "${ZIP}" > "${ZIP}.sha256"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: firmware
           retention-days: 30
-          path: dist/
+          path: |
+            landscape_clock-*.zip
+            landscape_clock-*.sha256
 
   test:
     name: Host Tests
@@ -98,9 +165,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            firmware/landscape_clock.bin
-            firmware/landscape_clock-merged.bin
-            firmware/bootloader.bin
-            firmware/partition-table.bin
-            firmware/flash_args
+            firmware/*.zip
+            firmware/*.sha256
           generate_release_notes: true
