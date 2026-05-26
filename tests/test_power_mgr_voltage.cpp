@@ -1,8 +1,7 @@
+#include <gtest/gtest.h>
 #define private public
 #include "platform/power_mgr.cpp"
 #undef private
-
-#include <stdio.h>
 
 extern "C" void adc_get_value(float* value, int* data)
 {
@@ -15,7 +14,7 @@ void pauseForSleep() {}
 void requestSync() {}
 } // namespace ClockNet
 
-int main()
+TEST(PowerMgrVoltage, VoltageToPercent)
 {
     struct Case {
         float voltage;
@@ -31,13 +30,7 @@ int main()
     };
 
     for (const Case& c : cases) {
-        const int actual = PowerManager::voltageToPercent(c.voltage);
-        if (actual != c.expected_percent) {
-            printf("voltageToPercent(%.3f) expected %d, got %d\n",
-                   c.voltage, c.expected_percent, actual);
-            return 1;
-        }
+        EXPECT_EQ(PowerManager::voltageToPercent(c.voltage), c.expected_percent)
+            << "voltage " << c.voltage;
     }
-
-    return 0;
 }

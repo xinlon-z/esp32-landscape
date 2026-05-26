@@ -1,7 +1,6 @@
+#include <gtest/gtest.h>
 #include "app/services/time_service.cpp"
 #include "app/core/event/event_bus.cpp"
-
-#include <stdio.h>
 
 static RtcDateTime_t rtc_time{};
 
@@ -10,7 +9,7 @@ RtcDateTime_t i2c_rtc_get(void)
     return rtc_time;
 }
 
-int main()
+TEST(TimeService, PollAndSnapshot)
 {
     rtc_time.hour = 12;
     rtc_time.minute = 34;
@@ -19,16 +18,12 @@ int main()
     rtc_time.day = 25;
     TimeService::get().poll();
     if (!TimeService::get().snapshot().rtc_ok) {
-        printf("valid rtc time failed\n");
-        return 1;
+        FAIL() << "valid rtc time failed";
     }
 
     rtc_time.second = 60;
     TimeService::get().poll();
     if (TimeService::get().snapshot().rtc_ok) {
-        printf("invalid rtc second failed\n");
-        return 1;
+        FAIL() << "invalid rtc second failed";
     }
-
-    return 0;
 }

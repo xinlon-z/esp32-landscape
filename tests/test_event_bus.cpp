@@ -1,8 +1,8 @@
 #include "app/core/event/event_bus.cpp"
 
-#include <stdio.h>
+#include <gtest/gtest.h>
 
-int main()
+TEST(EventBus, PublishPollReset)
 {
     EventBus::get().resetForTest();
 
@@ -11,48 +11,38 @@ int main()
     event.payload.power_state.revision = 42;
 
     if (!EventBus::get().publish(event)) {
-        printf("publish failed\n");
-        return 1;
+        FAIL() << "publish failed";
     }
 
     AppEvent out{};
     if (!EventBus::get().poll(&out)) {
-        printf("poll failed\n");
-        return 1;
+        FAIL() << "poll failed";
     }
     if (out.type != AppEventType::PowerStateChanged || out.payload.power_state.revision != 42) {
-        printf("event mismatch\n");
-        return 1;
+        FAIL() << "event mismatch";
     }
     if (EventBus::get().poll(&out)) {
-        printf("poll should return false on empty queue\n");
-        return 1;
+        FAIL() << "poll should return false on empty queue";
     }
 
     for (int i = 0; i < 16; ++i) {
         if (!EventBus::get().publish(event)) {
-            printf("publish before reset failed\n");
-            return 1;
+            FAIL() << "publish before reset failed";
         }
     }
     if (EventBus::get().publish(event)) {
-        printf("publish should fail when queue is full\n");
-        return 1;
+        FAIL() << "publish should fail when queue is full";
     }
     if (EventBus::get().overflowCount() != 1) {
-        printf("overflow count mismatch before reset\n");
-        return 1;
+        FAIL() << "overflow count mismatch before reset";
     }
 
     EventBus::get().resetForTest();
 
     if (EventBus::get().poll(&out)) {
-        printf("poll should return false after reset\n");
-        return 1;
+        FAIL() << "poll should return false after reset";
     }
     if (EventBus::get().overflowCount() != 0) {
-        printf("overflow count should reset\n");
-        return 1;
+        FAIL() << "overflow count should reset";
     }
-    return 0;
 }

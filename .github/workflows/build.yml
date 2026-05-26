@@ -63,6 +63,22 @@ jobs:
           retention-days: 30
           path: dist/
 
+  test:
+    name: Host Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -B build-tests -S tests
+
+      - name: Build
+        run: cmake --build build-tests --parallel
+
+      - name: Run
+        run: ctest --test-dir build-tests --output-on-failure
+
   release:
     name: Publish Release
     needs: build

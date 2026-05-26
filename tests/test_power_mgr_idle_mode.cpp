@@ -1,8 +1,7 @@
+#include <gtest/gtest.h>
 #define private public
 #include "platform/power_mgr.cpp"
 #undef private
-
-#include <stdio.h>
 
 extern "C" void adc_get_value(float* value, int* data)
 {
@@ -15,7 +14,7 @@ void pauseForSleep() {}
 void requestSync() {}
 } // namespace ClockNet
 
-int main()
+TEST(PowerMgrIdleMode, ComputeIdleMode)
 {
     struct Case {
         bool external_power;
@@ -33,17 +32,7 @@ int main()
     };
 
     for (const Case& c : cases) {
-        const PowerManager::IdleMode actual =
-            PowerManager::computeIdleMode(c.external_power, c.idle_ms);
-        if (actual != c.expected) {
-            printf("computeIdleMode(ext=%d, idle=%u) expected %d, got %d\n",
-                   c.external_power,
-                   static_cast<unsigned>(c.idle_ms),
-                   static_cast<int>(c.expected),
-                   static_cast<int>(actual));
-            return 1;
-        }
+        EXPECT_EQ(PowerManager::computeIdleMode(c.external_power, c.idle_ms), c.expected)
+            << "computeIdleMode(ext=" << c.external_power << ", idle=" << static_cast<unsigned>(c.idle_ms) << ")";
     }
-
-    return 0;
 }

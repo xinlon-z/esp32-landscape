@@ -1,9 +1,7 @@
+#include <gtest/gtest.h>
 #include "app/features/clock/clock_presenter.cpp"
 #include "app/features/clock/clock_model.cpp"
 #include "app/core/event/event_bus.cpp"
-
-#include <stdio.h>
-#include <string.h>
 
 namespace {
 ClockSnapshot g_time_after_poll{true, 9, 5, 2, 1, 5, 24, 1};
@@ -103,7 +101,7 @@ void ClockView::renderNetwork(const NetworkDisplayState& state, bool dimmed)
     g_network_dimmed = dimmed;
 }
 
-int main()
+TEST(ClockPresenter, StartAndTick)
 {
     EventBus::get().resetForTest();
 
@@ -112,38 +110,27 @@ int main()
     presenter.start();
 
     if (g_time_polls != 1 || g_power_polls != 1 || g_network_polls != 1) {
-        printf("start did not poll services first: %d %d %d\n", g_time_polls, g_power_polls, g_network_polls);
-        return 1;
+        FAIL() << "start did not poll services first: " << g_time_polls << " " << g_power_polls << " " << g_network_polls;
     }
 
-    if (strcmp(g_rendered_time.time, "09:05") != 0 ||
-        strcmp(g_rendered_time.weekday, "Mon") != 0 ||
-        strcmp(g_rendered_time.date, "05/24") != 0) {
-        printf("start rendered stale time: %s %s %s\n",
-               g_rendered_time.time, g_rendered_time.weekday, g_rendered_time.date);
-        return 1;
-    }
+    EXPECT_STREQ(g_rendered_time.time, "09:05") << "start rendered stale time";
+    EXPECT_STREQ(g_rendered_time.weekday, "Mon") << "start rendered stale weekday";
+    EXPECT_STREQ(g_rendered_time.date, "05/24") << "start rendered stale date";
 
     if (g_rendered_battery.percent != 50 || !g_rendered_battery.update_label) {
-        printf("start rendered stale battery: %d %d\n",
-               g_rendered_battery.percent, g_rendered_battery.update_label);
-        return 1;
+        FAIL() << "start rendered stale battery: " << g_rendered_battery.percent << " " << g_rendered_battery.update_label;
     }
 
     if (!g_rendered_network.wifi_connected || !g_rendered_network.sync_in_progress ||
         g_rendered_network.ntp_synced || !g_rendered_network.external_power) {
-        printf("start rendered stale network: %d %d %d %d\n",
-               g_rendered_network.wifi_connected,
-               g_rendered_network.sync_in_progress,
-               g_rendered_network.ntp_synced,
-               g_rendered_network.external_power);
-        return 1;
+        FAIL() << "start rendered stale network: " << g_rendered_network.wifi_connected
+               << " " << g_rendered_network.sync_in_progress
+               << " " << g_rendered_network.ntp_synced
+               << " " << g_rendered_network.external_power;
     }
 
     if (!g_time_dimmed || !g_battery_dimmed || !g_network_dimmed) {
-        printf("start did not render dimmed state: %d %d %d\n",
-               g_time_dimmed, g_battery_dimmed, g_network_dimmed);
-        return 1;
+        FAIL() << "start did not render dimmed state: " << g_time_dimmed << " " << g_battery_dimmed << " " << g_network_dimmed;
     }
 
     EventBus::get().resetForTest();
@@ -167,32 +154,23 @@ int main()
     presenter.tick();
 
     if (g_time_snapshots != 0 || g_power_snapshots != 1 || g_network_snapshots != 0) {
-        printf("power tick read wrong snapshots: %d %d %d\n",
-               g_time_snapshots, g_power_snapshots, g_network_snapshots);
-        return 1;
+        FAIL() << "power tick read wrong snapshots: " << g_time_snapshots << " " << g_power_snapshots << " " << g_network_snapshots;
     }
 
     if (g_time_renders != 1 || g_battery_renders != 1 || g_network_renders != 1) {
-        printf("power tick rendered wrong domains: %d %d %d\n",
-               g_time_renders, g_battery_renders, g_network_renders);
-        return 1;
+        FAIL() << "power tick rendered wrong domains: " << g_time_renders << " " << g_battery_renders << " " << g_network_renders;
     }
 
     if (g_rendered_battery.percent != 55 || !g_rendered_battery.update_label) {
-        printf("power tick battery render failed: %d %d\n",
-               g_rendered_battery.percent, g_rendered_battery.update_label);
-        return 1;
+        FAIL() << "power tick battery render failed: " << g_rendered_battery.percent << " " << g_rendered_battery.update_label;
     }
 
     if (g_time_dimmed || g_battery_dimmed || g_network_dimmed) {
-        printf("power tick did not update dimming: %d %d %d\n",
-               g_time_dimmed, g_battery_dimmed, g_network_dimmed);
-        return 1;
+        FAIL() << "power tick did not update dimming: " << g_time_dimmed << " " << g_battery_dimmed << " " << g_network_dimmed;
     }
 
     if (g_rendered_network.external_power) {
-        printf("power tick did not update external power icon state\n");
-        return 1;
+        FAIL() << "power tick did not update external power icon state";
     }
 
     EventBus::get().resetForTest();
@@ -219,16 +197,10 @@ int main()
     presenter.tick();
 
     if (g_time_snapshots != 0 || g_power_snapshots != 0 || g_network_snapshots != 1) {
-        printf("network tick read wrong snapshots: %d %d %d\n",
-               g_time_snapshots, g_power_snapshots, g_network_snapshots);
-        return 1;
+        FAIL() << "network tick read wrong snapshots: " << g_time_snapshots << " " << g_power_snapshots << " " << g_network_snapshots;
     }
 
     if (g_time_renders != 0 || g_battery_renders != 0 || g_network_renders != 1) {
-        printf("network tick rendered wrong domains: %d %d %d\n",
-               g_time_renders, g_battery_renders, g_network_renders);
-        return 1;
+        FAIL() << "network tick rendered wrong domains: " << g_time_renders << " " << g_battery_renders << " " << g_network_renders;
     }
-
-    return 0;
 }

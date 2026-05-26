@@ -1,6 +1,7 @@
 #include "app/features/music/util/music_background.cpp"
 
-#include <stdio.h>
+#include <gtest/gtest.h>
+
 #include <vector>
 
 static uint8_t redOf(lv_color_t color)
@@ -13,7 +14,7 @@ static uint8_t blueOf(lv_color_t color)
     return static_cast<uint8_t>(lv_color_to32(color) & 0xff);
 }
 
-int main()
+TEST(MusicBackground, BlurredBackground)
 {
     constexpr uint16_t cover_w = 16;
     constexpr uint16_t cover_h = 16;
@@ -34,8 +35,7 @@ int main()
 
     if (!musicGenerateBlurredBackground(cover.data(), cover_w, cover_h,
                                         output.data(), out_w, out_h, scratch.data())) {
-        printf("background generation failed\n");
-        return 1;
+        FAIL() << "background generation failed";
     }
 
     const lv_color_t left = output[out_h / 2 * out_w + 2];
@@ -43,17 +43,12 @@ int main()
     const lv_color_t right = output[out_h / 2 * out_w + out_w - 3];
 
     if (redOf(left) <= blueOf(left)) {
-        printf("expected left side to keep red cover influence\n");
-        return 1;
+        FAIL() << "expected left side to keep red cover influence";
     }
     if (blueOf(right) <= redOf(right)) {
-        printf("expected right side to keep blue cover influence\n");
-        return 1;
+        FAIL() << "expected right side to keep blue cover influence";
     }
     if (redOf(center) == 0 || blueOf(center) == 0) {
-        printf("expected blurred center to contain mixed color\n");
-        return 1;
+        FAIL() << "expected blurred center to contain mixed color";
     }
-
-    return 0;
 }

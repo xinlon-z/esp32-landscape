@@ -4,17 +4,27 @@ project(esp32_clock_tests C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+include(FetchContent)
+FetchContent_Declare(
+  googletest
+  URL https://github.com/google/googletest/archive/refs/tags/v1.15.2.tar.gz
+  DOWNLOAD_EXTRACT_TIMESTAMP ON)
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(googletest)
+
 enable_testing()
+include(GoogleTest)
 
 set(MAIN "${CMAKE_CURRENT_SOURCE_DIR}/../main")
 set(TEST_INCLUDES
-    "${CMAKE_CURRENT_SOURCE_DIR}/stubs"   # fake ESP-IDF / FreeRTOS headers
-    "${MAIN}")                            # app/, platform/, user_config.h
+    "${CMAKE_CURRENT_SOURCE_DIR}/stubs"
+    "${MAIN}")
 
 function(clock_test name)
     add_executable(${name} ${name}.cpp)
     target_include_directories(${name} PRIVATE ${TEST_INCLUDES})
-    add_test(NAME ${name} COMMAND ${name})
+    target_link_libraries(${name} GTest::gtest_main)
+    gtest_discover_tests(${name})
 endfunction()
 
 clock_test(test_event_queue)
@@ -27,6 +37,13 @@ clock_test(test_music_background)
 clock_test(test_music_background_image)
 clock_test(test_music_visualizer)
 clock_test(test_music_model)
+clock_test(test_clock_model)
+clock_test(test_clock_presenter)
+clock_test(test_power_mgr_voltage)
+clock_test(test_power_mgr_idle_mode)
+clock_test(test_power_service)
+clock_test(test_time_service)
+clock_test(test_screen_nav)
 
 # Separate compilation: music_presenter.cpp and music_model.cpp both define
 # kFramesPerSecond in anonymous namespaces, which collide in a single TU.
@@ -38,23 +55,17 @@ add_executable(test_music_presenter_eventbus
     ${MAIN}/app/services/mqtt_service.cpp
     ${MAIN}/app/services/cover_service.cpp)
 target_include_directories(test_music_presenter_eventbus PRIVATE ${TEST_INCLUDES})
-add_test(NAME test_music_presenter_eventbus COMMAND test_music_presenter_eventbus)
-clock_test(test_clock_model)
-clock_test(test_clock_presenter)
-clock_test(test_power_mgr_voltage)
-clock_test(test_power_mgr_idle_mode)
-clock_test(test_power_service)
-clock_test(test_time_service)
-clock_test(test_screen_nav)
+target_link_libraries(test_music_presenter_eventbus GTest::gtest_main)
+gtest_discover_tests(test_music_presenter_eventbus)
 
-# Separate compilation for these two tests: including music_mqtt.cpp and
-# mqtt_service.cpp in the same TU causes a redefinition of MusicMqtt::CoverImage.
-# music_mqtt.cpp must remain inlined (the test calls its anonymous-namespace
-# internals updateState/updateCover directly).
+# Separate compilation: music_mqtt.cpp must remain inlined (the test calls its
+# anonymous-namespace internals updateState/updateCover directly); compiling
+# mqtt_service.cpp separately avoids the MusicMqtt::CoverImage redefinition.
 add_executable(test_music_mqtt_ingest_service_event
     test_music_mqtt_ingest_service_event.cpp
     ${MAIN}/app/services/mqtt_service.cpp
     ${MAIN}/app/services/cover_service.cpp
     ${MAIN}/app/core/event/event_bus.cpp)
 target_include_directories(test_music_mqtt_ingest_service_event PRIVATE ${TEST_INCLUDES})
-add_test(NAME test_music_mqtt_ingest_service_event COMMAND test_music_mqtt_ingest_service_event)
+target_link_libraries(test_music_mqtt_ingest_service_event GTest::gtest_main)
+gtest_discover_tests(test_music_mqtt_ingest_service_event)

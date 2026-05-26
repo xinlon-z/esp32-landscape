@@ -1,7 +1,5 @@
+#include <gtest/gtest.h>
 #include "platform/music_mqtt.cpp"
-
-#include <stdio.h>
-#include <string.h>
 
 #include "app/core/event/event_bus.h"
 #include "app/services/cover_service.h"
@@ -15,19 +13,8 @@ Status getStatus()
 }
 } // namespace ClockNet
 
-static int expect(bool condition, const char* message)
+TEST(MusicMqttIngest, StateAndCoverEvents)
 {
-    if (!condition) {
-        printf("%s\n", message);
-        return 1;
-    }
-    return 0;
-}
-
-int main()
-{
-    int failures = 0;
-
     MusicMqtt::init();
     EventBus::get().resetForTest();
     const MusicState before = MqttService::get().snapshot();
@@ -35,18 +22,18 @@ int main()
     updateState("title", "Ingested", 8);
 
     const MusicState service_state = MqttService::get().snapshot();
-    failures += expect(strcmp(service_state.title, "Ingested") == 0, "service snapshot did not receive ingest");
-    failures += expect(service_state.revision == before.revision + 1, "ingest should increment service revision");
+    EXPECT_STREQ(service_state.title, "Ingested") << "service snapshot did not receive ingest";
+    EXPECT_EQ(service_state.revision, before.revision + 1) << "ingest should increment service revision";
 
     MusicState legacy_state{};
-    failures += expect(MusicMqtt::getState(&legacy_state), "legacy getState should still report state");
-    failures += expect(strcmp(legacy_state.title, "Ingested") == 0, "legacy state did not mirror service ingest");
-    failures += expect(legacy_state.revision == service_state.revision, "legacy state revision mismatch");
+    EXPECT_TRUE(MusicMqtt::getState(&legacy_state)) << "legacy getState should still report state";
+    EXPECT_STREQ(legacy_state.title, "Ingested") << "legacy state did not mirror service ingest";
+    EXPECT_EQ(legacy_state.revision, service_state.revision) << "legacy state revision mismatch";
 
     AppEvent event{};
-    failures += expect(EventBus::get().poll(&event), "ingest should publish MusicStateChanged");
-    failures += expect(event.type == AppEventType::MusicStateChanged, "ingest event type mismatch");
-    failures += expect(event.payload.music_state.revision == service_state.revision, "ingest event revision mismatch");
+    EXPECT_TRUE(EventBus::get().poll(&event)) << "ingest should publish MusicStateChanged";
+    EXPECT_EQ(event.type, AppEventType::MusicStateChanged) << "ingest event type mismatch";
+    EXPECT_EQ(event.payload.music_state.revision, service_state.revision) << "ingest event revision mismatch";
 
     CoverService::get().clear();
     EventBus::get().resetForTest();
@@ -61,27 +48,26 @@ int main()
     updateCover(cover, 128);
 
     CoverState active = CoverService::get().active();
-    failures += expect(active.cover_id == 1, "cover ingest should assign first cover_id");
-    failures += expect(active.status == CoverStatus::Ready, "cover ingest should decode to Ready");
-    failures += expect(active.jpeg_size == 128, "cover ingest size mismatch");
-    failures += expect(active.has_pixels, "cover ingest should expose decoded pixels");
+    EXPECT_EQ(active.cover_id, 1) << "cover ingest should assign first cover_id";
+    EXPECT_EQ(active.status, CoverStatus::Ready) << "cover ingest should decode to Ready";
+    EXPECT_EQ(active.jpeg_size, 128) << "cover ingest size mismatch";
+    EXPECT_TRUE(active.has_pixels) << "cover ingest should expose decoded pixels";
 
     BorrowedCover borrowed{};
-    failures += expect(CoverService::get().borrow(active.cover_id, &borrowed), "cover ingest should lend active cover");
-    failures += expect(borrowed.jpeg_data != nullptr, "cover ingest should expose borrowed bytes");
-    failures += expect(borrowed.jpeg_size == 128, "borrowed cover ingest size mismatch");
-    failures += expect(borrowed.image != nullptr, "cover ingest should expose image descriptor");
-    failures += expect(borrowed.pixels != nullptr, "cover ingest should expose decoded pixels");
+    EXPECT_TRUE(CoverService::get().borrow(active.cover_id, &borrowed)) << "cover ingest should lend active cover";
+    EXPECT_TRUE(borrowed.jpeg_data != nullptr) << "cover ingest should expose borrowed bytes";
+    EXPECT_EQ(borrowed.jpeg_size, 128) << "borrowed cover ingest size mismatch";
+    EXPECT_TRUE(borrowed.image != nullptr) << "cover ingest should expose image descriptor";
+    EXPECT_TRUE(borrowed.pixels != nullptr) << "cover ingest should expose decoded pixels";
 
-    failures += expect(EventBus::get().poll(&event), "cover ingest should publish loading CoverStateChanged");
-    failures += expect(event.type == AppEventType::CoverStateChanged, "cover ingest event type mismatch");
-    failures += expect(event.payload.cover_state.cover_id == active.cover_id, "cover ingest event id mismatch");
-    failures += expect(event.payload.cover_state.status == CoverStatus::Loading, "cover ingest event status mismatch");
-    failures += expect(EventBus::get().poll(&event), "cover ingest should publish ready CoverStateChanged");
-    failures += expect(event.type == AppEventType::CoverStateChanged, "cover ready event type mismatch");
-    failures += expect(event.payload.cover_state.cover_id == active.cover_id, "cover ready event id mismatch");
-    failures += expect(event.payload.cover_state.status == CoverStatus::Ready, "cover ready event status mismatch");
+    EXPECT_TRUE(EventBus::get().poll(&event)) << "cover ingest should publish loading CoverStateChanged";
+    EXPECT_EQ(event.type, AppEventType::CoverStateChanged) << "cover ingest event type mismatch";
+    EXPECT_EQ(event.payload.cover_state.cover_id, active.cover_id) << "cover ingest event id mismatch";
+    EXPECT_EQ(event.payload.cover_state.status, CoverStatus::Loading) << "cover ingest event status mismatch";
+    EXPECT_TRUE(EventBus::get().poll(&event)) << "cover ingest should publish ready CoverStateChanged";
+    EXPECT_EQ(event.type, AppEventType::CoverStateChanged) << "cover ready event type mismatch";
+    EXPECT_EQ(event.payload.cover_state.cover_id, active.cover_id) << "cover ready event id mismatch";
+    EXPECT_EQ(event.payload.cover_state.status, CoverStatus::Ready) << "cover ready event status mismatch";
 
     CoverService::get().clear();
-    return failures == 0 ? 0 : 1;
 }
