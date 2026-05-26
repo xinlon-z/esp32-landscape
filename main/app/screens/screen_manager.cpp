@@ -42,12 +42,7 @@ void ScreenManager::create()
     current_ = ScreenId::Clock;
     clock_.onEnter();
     attachGestureHandler(lv_scr_act());
-    // 100 ms tick keeps event-to-render latency bounded for cover/track
-    // changes — at 1 s, a CoverStateChanged published just after a tick
-    // would wait the full second before the presenter polled it. Per-tick
-    // cost is small: text-only labels are no-ops when the text matches and
-    // the visualizer animation runs on its own dedicated 33 ms timer.
-    tick_timer_ = lv_timer_create(onTickTimer, 100, this);
+    tick_timer_ = lv_timer_create(onTickTimer, 1000, this);
 }
 
 void ScreenManager::destroy()
