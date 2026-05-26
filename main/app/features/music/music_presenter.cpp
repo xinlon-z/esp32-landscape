@@ -3,6 +3,7 @@
 #include "app/core/event/event_bus.h"
 #include "app/services/cover_service.h"
 #include "app/services/mqtt_service.h"
+#include "app/services/power_service.h"
 #include "lvgl.h"
 
 namespace {
@@ -26,6 +27,7 @@ void MusicPresenter::start()
     last_cover_id_ = cover.cover_id;
     last_cover_status_ = cover.status;
 
+    syncDimState();
     renderMusic();
     renderCover();
 }
@@ -43,6 +45,7 @@ void MusicPresenter::tick()
 
     bool music_changed = false;
     bool cover_changed = false;
+    bool power_changed = false;
     AppEvent event{};
     while (EventBus::get().poll(&event)) {
         if (event.type == AppEventType::MusicStateChanged &&
@@ -55,6 +58,8 @@ void MusicPresenter::tick()
             last_cover_id_ = event.payload.cover_state.cover_id;
             last_cover_status_ = event.payload.cover_state.status;
             cover_changed = true;
+        } else if (event.type == AppEventType::PowerStateChanged) {
+            power_changed = true;
         } else if (event.type == AppEventType::FeatureAction &&
                    event.payload.feature_action.screen_id == static_cast<uint8_t>(ScreenId::Music)) {
             music_changed = true;
@@ -65,10 +70,22 @@ void MusicPresenter::tick()
         music_state_ = MqttService::get().snapshot();
         last_music_revision_ = music_state_.revision;
     }
+    if (power_changed) {
+        syncDimState();
+    }
 
     renderMusic();
     if (cover_changed) {
         renderCover();
+    }
+}
+
+void MusicPresenter::syncDimState()
+{
+    const bool now_dim = PowerService::get().snapshot().dimmed;
+    if (now_dim != dimmed_) {
+        dimmed_ = now_dim;
+        view_.setDimmed(dimmed_);
     }
 }
 

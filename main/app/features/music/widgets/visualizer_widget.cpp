@@ -46,15 +46,17 @@ void VisualizerWidget::render(uint32_t progress_per_mille, bool playing)
     cached_progress_ = progress_per_mille;
     cached_playing_  = playing;
 
-    // Animate at ~20 FPS while playing; freeze the bars when paused so we
-    // don't burn Core 0 cycles re-rendering an unchanging frame.
-    if (playing && !anim_timer_) {
-        anim_timer_ = lv_timer_create(onAnimTimer, kAnimPeriodMs, this);
-    } else if (!playing && anim_timer_) {
-        lv_timer_del(anim_timer_);
-        anim_timer_ = nullptr;
-    }
+    updateAnimationTimer();
+    renderBars();
+}
 
+void VisualizerWidget::setDimmed(bool dimmed)
+{
+    if (cached_dimmed_ == dimmed) {
+        return;
+    }
+    cached_dimmed_ = dimmed;
+    updateAnimationTimer();
     renderBars();
 }
 
@@ -69,6 +71,7 @@ void VisualizerWidget::clear()
     }
     cached_progress_ = 0;
     cached_playing_ = false;
+    cached_dimmed_ = false;
 }
 
 void VisualizerWidget::onAnimTimer(lv_timer_t* timer)
@@ -79,10 +82,26 @@ void VisualizerWidget::onAnimTimer(lv_timer_t* timer)
     }
 }
 
+void VisualizerWidget::updateAnimationTimer()
+{
+    // Animate at ~20 FPS only when music is playing AND the screen is bright.
+    // Pausing on dim avoids burning Core 0 cycles redrawing pixels nobody can
+    // see — significant for battery life when the device sits idle on the
+    // music screen.
+    const bool should_animate = cached_playing_ && !cached_dimmed_;
+    if (should_animate && !anim_timer_) {
+        anim_timer_ = lv_timer_create(onAnimTimer, kAnimPeriodMs, this);
+    } else if (!should_animate && anim_timer_) {
+        lv_timer_del(anim_timer_);
+        anim_timer_ = nullptr;
+    }
+}
+
 void VisualizerWidget::renderBars()
 {
     const uint32_t phase_ms = lv_tick_get();
     const int active_count = static_cast<int>((cached_progress_ * kBarCount) / 1000u);
+    const bool bouncing = cached_playing_ && !cached_dimmed_;
     for (int i = 0; i < kBarCount; ++i) {
         lv_obj_t* bar = bars_[i];
         if (!bar) {
@@ -91,7 +110,7 @@ void VisualizerWidget::renderBars()
         const uint8_t height = musicVisualizerBarHeight(static_cast<uint8_t>(i),
                                                         static_cast<uint8_t>(kBarCount),
                                                         cached_progress_,
-                                                        cached_playing_,
+                                                        bouncing,
                                                         phase_ms);
         lv_obj_set_size(bar, kSpectrumBarW, height);
         lv_obj_set_y(bar, kSpectrumY - height);

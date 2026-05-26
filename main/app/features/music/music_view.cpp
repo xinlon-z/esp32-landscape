@@ -209,3 +209,8 @@ void MusicView::renderCoverPlaceholder()
     background_.renderPlaceholder();
     cover_.renderPlaceholder();
 }
+
+void MusicView::setDimmed(bool dimmed)
+{
+    visualizer_.setDimmed(dimmed);
+}

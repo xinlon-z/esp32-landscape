@@ -54,7 +54,8 @@ add_executable(test_music_presenter_eventbus
     ${MAIN}/app/features/music/music_model.cpp
     ${MAIN}/app/core/event/event_bus.cpp
     ${MAIN}/app/services/mqtt_service.cpp
-    ${MAIN}/app/services/cover_service.cpp)
+    ${MAIN}/app/services/cover_service.cpp
+    ${MAIN}/app/services/power_service.cpp)
 target_include_directories(test_music_presenter_eventbus PRIVATE ${TEST_INCLUDES})
 target_link_libraries(test_music_presenter_eventbus GTest::gtest_main)
 gtest_discover_tests(test_music_presenter_eventbus)

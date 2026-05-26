@@ -13,6 +13,7 @@ public:
     void render(const MusicDisplayState& state);
     void renderCover(const BorrowedCover& cover);
     void renderCoverPlaceholder();
+    void setDimmed(bool dimmed);
 
 private:
     lv_obj_t* title_ = nullptr;
