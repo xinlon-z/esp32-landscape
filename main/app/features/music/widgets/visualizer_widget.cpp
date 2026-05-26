@@ -7,6 +7,7 @@ constexpr int kSpectrumX = 214;
 constexpr int kSpectrumY = 112;
 constexpr int kSpectrumBarW = 4;
 constexpr int kSpectrumGap = 3;
+constexpr uint32_t kAnimPeriodMs = 50;  // ~20 FPS while playing.
 
 void clearStyle(lv_obj_t* obj)
 {
@@ -33,6 +34,8 @@ void VisualizerWidget::create(lv_obj_t* parent)
         setBg(bar, 0xffffff, i < 18 ? LV_OPA_COVER : LV_OPA_30);
         bars_[i] = bar;
     }
+    cached_progress_ = 0;
+    cached_playing_ = false;
 }
 
 void VisualizerWidget::render(uint32_t progress_per_mille, bool playing)
@@ -40,8 +43,46 @@ void VisualizerWidget::render(uint32_t progress_per_mille, bool playing)
     if (progress_per_mille > 1000u) {
         progress_per_mille = 1000u;
     }
+    cached_progress_ = progress_per_mille;
+    cached_playing_  = playing;
 
-    const int active_count = static_cast<int>((progress_per_mille * kBarCount) / 1000u);
+    // Animate at ~20 FPS while playing; freeze the bars when paused so we
+    // don't burn Core 0 cycles re-rendering an unchanging frame.
+    if (playing && !anim_timer_) {
+        anim_timer_ = lv_timer_create(onAnimTimer, kAnimPeriodMs, this);
+    } else if (!playing && anim_timer_) {
+        lv_timer_del(anim_timer_);
+        anim_timer_ = nullptr;
+    }
+
+    renderBars();
+}
+
+void VisualizerWidget::clear()
+{
+    if (anim_timer_) {
+        lv_timer_del(anim_timer_);
+        anim_timer_ = nullptr;
+    }
+    for (lv_obj_t*& bar : bars_) {
+        bar = nullptr;
+    }
+    cached_progress_ = 0;
+    cached_playing_ = false;
+}
+
+void VisualizerWidget::onAnimTimer(lv_timer_t* timer)
+{
+    auto* self = static_cast<VisualizerWidget*>(timer->user_data);
+    if (self) {
+        self->renderBars();
+    }
+}
+
+void VisualizerWidget::renderBars()
+{
+    const uint32_t phase_ms = lv_tick_get();
+    const int active_count = static_cast<int>((cached_progress_ * kBarCount) / 1000u);
     for (int i = 0; i < kBarCount; ++i) {
         lv_obj_t* bar = bars_[i];
         if (!bar) {
@@ -49,17 +90,11 @@ void VisualizerWidget::render(uint32_t progress_per_mille, bool playing)
         }
         const uint8_t height = musicVisualizerBarHeight(static_cast<uint8_t>(i),
                                                         static_cast<uint8_t>(kBarCount),
-                                                        progress_per_mille,
-                                                        playing);
+                                                        cached_progress_,
+                                                        cached_playing_,
+                                                        phase_ms);
         lv_obj_set_size(bar, kSpectrumBarW, height);
         lv_obj_set_y(bar, kSpectrumY - height);
         setBg(bar, 0xffffff, i < active_count ? LV_OPA_COVER : LV_OPA_30);
-    }
-}
-
-void VisualizerWidget::clear()
-{
-    for (lv_obj_t*& bar : bars_) {
-        bar = nullptr;
     }
 }

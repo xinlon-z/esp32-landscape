@@ -13,5 +13,11 @@ public:
     void clear();
 
 private:
+    static void onAnimTimer(lv_timer_t* timer);
+    void renderBars();
+
     lv_obj_t* bars_[kBarCount] = {};
+    lv_timer_t* anim_timer_ = nullptr;
+    uint32_t cached_progress_ = 0;
+    bool cached_playing_ = false;
 };
