@@ -18,9 +18,9 @@ extern "C" void app_main(void)
 {
     lcd_bl_pwm_bsp_init(LCD_PWM_MODE_255);
     i2c_master_Init();
-    i2c_rtc_setup();
     adc_bsp_init();
     PowerManager::init();
+    i2c_rtc_setup();
     ClockNet::init();
     MqttService::get().init();
     ESP_ERROR_CHECK(LvglPort::init());

@@ -30,6 +30,7 @@ void MusicPresenter::start()
     last_cover_id_ = cover.cover_id;
     last_cover_status_ = cover.status;
 
+    PowerService::get().poll();
     syncDimState();
     renderMusic();
     renderCover();
@@ -45,6 +46,8 @@ void MusicPresenter::tick()
     if (!running_) {
         return;
     }
+
+    PowerService::get().poll();
 
     bool music_changed = false;
     bool cover_changed = false;

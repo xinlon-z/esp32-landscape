@@ -10,6 +10,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "i2c_bsp.h"
 #include "lcd_bl_pwm_bsp.h"
 
 namespace {
@@ -22,8 +23,9 @@ static const int   kBatSampleEvery = 5;  // ADC read every 5 × 500 ms = 2.5 s
 static constexpr float kBatEmptyVoltage = 3.30f;
 static constexpr float kBatFullVoltage  = 4.125f;
 
-// GPIO_NUM_16 is the SYS_OUT latch line from the power management IC.
-// It is read-only and only used for status logging.
+// The board's battery power latch is held through TCA9554 EXIO6 (SYS_EN).
+// GPIO_NUM_16 is SYS_OUT and is read-only status for logging.
+static constexpr uint8_t kPowerHoldExioPin = 6;
 static constexpr gpio_num_t kPowerSenseGpio = GPIO_NUM_16;
 
 // Packed atomic state word (see power_mgr.h for encoding description):
@@ -67,6 +69,17 @@ static int backlightDutyFor(PowerManager::IdleMode mode)
     case PowerManager::IdleMode::Active:
     default:
         return LCD_PWM_MODE_255;
+    }
+}
+
+static void enableBatteryPowerHold()
+{
+    const esp_err_t err = i2c_exio_set_output(kPowerHoldExioPin, true);
+    if (err == ESP_OK) {
+        ESP_LOGI(kTag, "Battery power hold enabled via TCA9554 EXIO%u", kPowerHoldExioPin);
+    } else {
+        ESP_LOGW(kTag, "Failed to enable battery power hold on TCA9554 EXIO%u: %s",
+                 kPowerHoldExioPin, esp_err_to_name(err));
     }
 }
 
@@ -201,6 +214,8 @@ void PowerManager::task(void*)
 
 void PowerManager::init()
 {
+    enableBatteryPowerHold();
+
     // Configure SYS_OUT sense GPIO as input with pull-up.
     gpio_config_t cfg = {};
     cfg.intr_type    = GPIO_INTR_DISABLE;
