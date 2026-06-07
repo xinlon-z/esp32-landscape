@@ -111,6 +111,17 @@ static inline lv_timer_t* lv_timer_create(void (*cb)(lv_timer_t*), uint32_t peri
     return timer;
 }
 
+static inline void lv_timer_del(lv_timer_t* timer)
+{
+    auto& s = lvglStubState();
+    if (s.last_timer == timer) {
+        delete s.last_timer;
+        s.last_timer = nullptr;
+        return;
+    }
+    delete timer;
+}
+
 static inline void lv_timer_set_repeat_count(lv_timer_t* timer, int count)
 {
     if (timer) {

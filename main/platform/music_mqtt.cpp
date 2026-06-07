@@ -5,6 +5,7 @@
 #include <unistd.h>
 
 #include "clock_net.h"
+#include "music_mqtt.h"
 #include "clock_secrets.h"
 #include "app/services/mqtt_service.h"
 #include "app/services/cover_service.h"
@@ -15,36 +16,71 @@
 #include "freertos/task.h"
 #include "lwip/netdb.h"
 
-namespace MusicMqtt {
-struct CoverImage {
-    uint8_t* data = nullptr;
-    uint32_t size = 0;
-};
-
-void init();
-bool getState(MusicState* state);
-bool takeCover(CoverImage* cover);
-} // namespace MusicMqtt
-
 namespace {
 
 constexpr const char* kTag = "music_mqtt";
 constexpr const char* kTopicPrefix = "shairport/livingroom/";
-constexpr const char* kSubscribeTopic = "shairport/livingroom/#";
-constexpr const char* kClientId = "esp32-music-ui";
+constexpr const char* kMetadataClientId = "esp32-music-meta";
+constexpr const char* kCoverClientId = "esp32-music-cover";
+constexpr const char* kMetadataTopics[] = {
+    "shairport/livingroom/title",
+    "shairport/livingroom/artist",
+    "shairport/livingroom/album",
+    "shairport/livingroom/genre",
+    "shairport/livingroom/active",
+    "shairport/livingroom/playing",
+    "shairport/livingroom/volume",
+    "shairport/livingroom/ssnc/pvol",
+    "shairport/livingroom/ssnc/prgr",
+};
+constexpr const char* kCoverTopics[] = {
+    "shairport/livingroom/cover",
+};
 constexpr int kSocketTimeoutSeconds = 20;
 constexpr int kReconnectDelayMs = 5000;
-constexpr int kTaskStackBytes = 6144;
+constexpr int kMetadataTaskStackBytes = 6144;
+constexpr int kCoverTaskStackBytes = 6144;
 constexpr int kPayloadLimit = 256;
 constexpr int kMaxCoverBytes = 256 * 1024;
+constexpr UBaseType_t kMetadataTaskPriority = 5;
+constexpr UBaseType_t kCoverTaskPriority = 1;
+constexpr BaseType_t kMetadataTaskCore = 0;
+constexpr BaseType_t kCoverTaskCore = 1;
+
+enum class StreamKind : uint8_t {
+    Metadata,
+    Cover,
+};
+
+struct StreamConfig {
+    const char* name;
+    const char* client_id;
+    const char* const* topics;
+    size_t topic_count;
+    StreamKind kind;
+};
+
+constexpr StreamConfig kMetadataStream = {
+    "metadata",
+    kMetadataClientId,
+    kMetadataTopics,
+    sizeof(kMetadataTopics) / sizeof(kMetadataTopics[0]),
+    StreamKind::Metadata,
+};
+
+constexpr StreamConfig kCoverStream = {
+    "cover",
+    kCoverClientId,
+    kCoverTopics,
+    sizeof(kCoverTopics) / sizeof(kCoverTopics[0]),
+    StreamKind::Cover,
+};
 
 SemaphoreHandle_t s_state_mutex = nullptr;
-SemaphoreHandle_t s_cover_mutex = nullptr;
-TaskHandle_t s_task = nullptr;
+TaskHandle_t s_metadata_task = nullptr;
+TaskHandle_t s_cover_task = nullptr;
 MusicState s_state;
 bool s_has_state = false;
-uint8_t* s_pending_cover_data = nullptr;
-uint32_t s_pending_cover_size = 0;
 
 bool writeAll(int sock, const uint8_t* data, size_t len)
 {
@@ -137,7 +173,7 @@ bool drainBytes(int sock, int len)
     return true;
 }
 
-bool sendConnect(int sock)
+bool sendConnect(int sock, const char* client_id)
 {
     uint8_t body[256];
     size_t pos = 0;
@@ -146,7 +182,7 @@ bool sendConnect(int sock)
     body[pos++] = 0xc2;
     body[pos++] = 0;
     body[pos++] = 60;
-    pos = appendString(body, pos, kClientId);
+    pos = appendString(body, pos, client_id);
     pos = appendString(body, pos, kMqttUsername);
     pos = appendString(body, pos, kMqttPassword);
 
@@ -168,16 +204,34 @@ bool readConnack(int sock)
     return response[0] == 0x20 && response[1] == 0x02 && response[3] == 0x00;
 }
 
-bool sendSubscribe(int sock)
+bool appendSubscription(uint8_t* body, size_t body_size, size_t* pos, const char* topic)
 {
-    uint8_t body[160];
+    const size_t len = strlen(topic);
+    if (*pos + 2 + len + 1 > body_size) {
+        return false;
+    }
+
+    body[(*pos)++] = static_cast<uint8_t>((len >> 8) & 0xff);
+    body[(*pos)++] = static_cast<uint8_t>(len & 0xff);
+    memcpy(body + *pos, topic, len);
+    *pos += len;
+    body[(*pos)++] = 0;
+    return true;
+}
+
+bool sendSubscribe(int sock, const char* const* topics, size_t topic_count)
+{
+    uint8_t body[384];
     size_t pos = 0;
     body[pos++] = 0;
     body[pos++] = 1;
-    pos = appendString(body, pos, kSubscribeTopic);
-    body[pos++] = 0;
+    for (size_t i = 0; i < topic_count; ++i) {
+        if (!appendSubscription(body, sizeof(body), &pos, topics[i])) {
+            return false;
+        }
+    }
 
-    uint8_t packet[180];
+    uint8_t packet[420];
     size_t out = 0;
     packet[out++] = 0x82;
     out = encodeRemainingLength(packet, out, pos);
@@ -268,18 +322,6 @@ bool isJpegCover(const uint8_t* data, uint32_t size)
     return data && size >= 128 && data[0] == 0xff && data[1] == 0xd8;
 }
 
-uint8_t* copyCover(const uint8_t* data, uint32_t size)
-{
-    if (!data || size == 0 || size > kMaxCoverBytes) {
-        return nullptr;
-    }
-    uint8_t* copy = allocCover(static_cast<int>(size));
-    if (copy) {
-        memcpy(copy, data, size);
-    }
-    return copy;
-}
-
 void updateCover(uint8_t* data, uint32_t size)
 {
     if (!data || size == 0) {
@@ -292,27 +334,14 @@ void updateCover(uint8_t* data, uint32_t size)
         return;
     }
 
-    // CoverService owns the EventBus-facing cover state; MusicMqtt::takeCover
-    // gives mqtt_service.cpp ownership of the raw bytes for the pending slot.
-    uint8_t* service_copy = copyCover(data, size);
-    if (service_copy) {
-        CoverService::get().acceptJpeg(service_copy, size);
-    }
-
-    if (xSemaphoreTake(s_cover_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        if (s_pending_cover_data) {
-            heap_caps_free(s_pending_cover_data);
-        }
-        s_pending_cover_data = data;
-        s_pending_cover_size = size;
-        xSemaphoreGive(s_cover_mutex);
-        ESP_LOGI(kTag, "cover received: %lu bytes", static_cast<unsigned long>(size));
-    } else {
-        heap_caps_free(data);
-    }
+    // CoverService takes ownership of the original payload. Keeping a second
+    // legacy pending-copy here makes metadata latency worse during track
+    // changes, so MusicMqtt::takeCover is intentionally no longer fed.
+    CoverService::get().acceptJpeg(data, size);
+    ESP_LOGI(kTag, "cover received: %lu bytes", static_cast<unsigned long>(size));
 }
 
-bool handlePublish(int sock, uint8_t fixed_header, int remaining)
+bool handlePublish(int sock, uint8_t fixed_header, int remaining, StreamKind kind)
 {
     uint8_t len_buf[2];
     if (remaining < 2 || !readExact(sock, len_buf, sizeof(len_buf))) {
@@ -341,7 +370,14 @@ bool handlePublish(int sock, uint8_t fixed_header, int remaining)
     }
 
     const char* field = fieldFromTopic(topic);
+    if (!field) {
+        return drainBytes(sock, remaining);
+    }
+
     if (field && strcmp(field, "cover") == 0) {
+        if (kind != StreamKind::Cover) {
+            return drainBytes(sock, remaining);
+        }
         if (remaining <= 0 || remaining > kMaxCoverBytes) {
             return drainBytes(sock, remaining);
         }
@@ -359,6 +395,10 @@ bool handlePublish(int sock, uint8_t fixed_header, int remaining)
         return true;
     }
 
+    if (kind != StreamKind::Metadata) {
+        return drainBytes(sock, remaining);
+    }
+
     char payload[kPayloadLimit];
     const int copy_len = remaining < kPayloadLimit - 1 ? remaining : kPayloadLimit - 1;
     if (copy_len > 0 && !readExact(sock, reinterpret_cast<uint8_t*>(payload), copy_len)) {
@@ -371,7 +411,7 @@ bool handlePublish(int sock, uint8_t fixed_header, int remaining)
     return drainBytes(sock, remaining);
 }
 
-bool mqttLoop(int sock)
+bool mqttLoop(int sock, StreamKind kind)
 {
     const int byte = readByte(sock);
     if (byte < 0) {
@@ -386,13 +426,15 @@ bool mqttLoop(int sock)
 
     const uint8_t packet_type = static_cast<uint8_t>(byte) >> 4;
     if (packet_type == 3) {
-        return handlePublish(sock, static_cast<uint8_t>(byte), remaining);
+        return handlePublish(sock, static_cast<uint8_t>(byte), remaining, kind);
     }
     return drainBytes(sock, remaining);
 }
 
-void mqttTask(void*)
+void mqttTask(void* arg)
 {
+    const auto* config = static_cast<const StreamConfig*>(arg);
+
     while (true) {
         while (!ClockNet::getStatus().wifi_connected) {
             vTaskDelay(pdMS_TO_TICKS(1000));
@@ -400,25 +442,28 @@ void mqttTask(void*)
 
         int sock = connectSocket();
         if (sock < 0) {
-            ESP_LOGW(kTag, "connect failed");
+            ESP_LOGW(kTag, "%s connect failed", config->name);
             vTaskDelay(pdMS_TO_TICKS(kReconnectDelayMs));
             continue;
         }
 
-        ESP_LOGI(kTag, "connected to %s:%d", kMqttHost, kMqttPort);
-        const bool ready = sendConnect(sock) && readConnack(sock) && sendSubscribe(sock);
+        ESP_LOGI(kTag, "%s connected to %s:%d", config->name, kMqttHost, kMqttPort);
+        const bool ready = sendConnect(sock, config->client_id) &&
+                           readConnack(sock) &&
+                           sendSubscribe(sock, config->topics, config->topic_count);
         if (!ready) {
-            ESP_LOGW(kTag, "MQTT handshake failed");
+            ESP_LOGW(kTag, "%s MQTT handshake failed", config->name);
             close(sock);
             vTaskDelay(pdMS_TO_TICKS(kReconnectDelayMs));
             continue;
         }
 
-        ESP_LOGI(kTag, "subscribed to %s", kSubscribeTopic);
-        while (ClockNet::getStatus().wifi_connected && mqttLoop(sock)) {
+        ESP_LOGI(kTag, "%s subscribed to %u topic(s)",
+                 config->name, static_cast<unsigned>(config->topic_count));
+        while (ClockNet::getStatus().wifi_connected && mqttLoop(sock, config->kind)) {
         }
 
-        ESP_LOGW(kTag, "disconnected");
+        ESP_LOGW(kTag, "%s disconnected", config->name);
         close(sock);
         vTaskDelay(pdMS_TO_TICKS(kReconnectDelayMs));
     }
@@ -431,11 +476,17 @@ void MusicMqtt::init()
     if (!s_state_mutex) {
         s_state_mutex = xSemaphoreCreateMutex();
     }
-    if (!s_cover_mutex) {
-        s_cover_mutex = xSemaphoreCreateMutex();
+    if (!s_metadata_task) {
+        xTaskCreatePinnedToCore(mqttTask, "music_meta", kMetadataTaskStackBytes,
+                                const_cast<StreamConfig*>(&kMetadataStream),
+                                kMetadataTaskPriority, &s_metadata_task,
+                                kMetadataTaskCore);
     }
-    if (!s_task) {
-        xTaskCreatePinnedToCore(mqttTask, "music_mqtt", kTaskStackBytes, nullptr, 3, &s_task, 0);
+    if (!s_cover_task) {
+        xTaskCreatePinnedToCore(mqttTask, "music_cover", kCoverTaskStackBytes,
+                                const_cast<StreamConfig*>(&kCoverStream),
+                                kCoverTaskPriority, &s_cover_task,
+                                kCoverTaskCore);
     }
 }
 
@@ -456,21 +507,11 @@ bool MusicMqtt::getState(MusicState* state)
 
 bool MusicMqtt::takeCover(CoverImage* cover)
 {
-    if (!cover || !s_cover_mutex) {
+    if (!cover) {
         return false;
     }
-
-    bool has_cover = false;
-    if (xSemaphoreTake(s_cover_mutex, pdMS_TO_TICKS(20)) == pdTRUE) {
-        if (s_pending_cover_data && s_pending_cover_size > 0) {
-            cover->data = s_pending_cover_data;
-            cover->size = s_pending_cover_size;
-            s_pending_cover_data = nullptr;
-            s_pending_cover_size = 0;
-            has_cover = true;
-        }
-        xSemaphoreGive(s_cover_mutex);
-    }
-    return has_cover;
+    cover->data = nullptr;
+    cover->size = 0;
+    return false;
 }
 

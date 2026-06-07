@@ -13,6 +13,22 @@ Status getStatus()
 }
 } // namespace ClockNet
 
+TEST(MusicMqttIngest, MetadataAndCoverUseSeparateSubscriptions)
+{
+    EXPECT_EQ(kMetadataStream.kind, StreamKind::Metadata);
+    EXPECT_EQ(kCoverStream.kind, StreamKind::Cover);
+
+    for (size_t i = 0; i < kMetadataStream.topic_count; ++i) {
+        EXPECT_TRUE(strstr(kMetadataStream.topics[i], "/cover") == nullptr)
+            << "metadata stream must not receive large cover payloads";
+        EXPECT_TRUE(strchr(kMetadataStream.topics[i], '#') == nullptr)
+            << "metadata stream must avoid wildcard subscriptions";
+    }
+
+    ASSERT_EQ(kCoverStream.topic_count, 1u);
+    EXPECT_TRUE(strstr(kCoverStream.topics[0], "/cover") != nullptr);
+}
+
 TEST(MusicMqttIngest, StateAndCoverEvents)
 {
     MusicMqtt::init();
