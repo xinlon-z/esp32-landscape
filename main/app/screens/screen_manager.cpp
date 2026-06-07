@@ -7,6 +7,18 @@
 namespace {
 
 constexpr const char* kTag = "screen_mgr";
+constexpr int kScreenW = 640;
+constexpr int kScreenH = 172;
+constexpr int kGestureMaxShiftPx = 18;
+constexpr int kGestureAcceptedShiftPx = 24;
+constexpr int kGesturePillW = 10;
+constexpr int kGesturePillH = 58;
+constexpr int kGesturePillY = 57;
+constexpr int kGestureArrowW = 28;
+constexpr int kGestureArrowH = 32;
+constexpr int kGestureArrowY = 70;
+constexpr uint32_t kGestureSettleMs = 120;
+constexpr uint32_t kGestureSwitchDelayMs = 120;
 
 void enableTouchEvents(lv_obj_t* obj, bool bubble_to_parent)
 {
@@ -53,6 +65,46 @@ const char* swipeName(SwipeDirection swipe)
     return "none";
 }
 
+void clearObjStyle(lv_obj_t* obj)
+{
+    lv_obj_clear_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_border_width(obj, 0, 0);
+    lv_obj_set_style_pad_all(obj, 0, 0);
+}
+
+void setObjX(void* obj, int32_t value)
+{
+    lv_obj_set_x(static_cast<lv_obj_t*>(obj), value);
+}
+
+void setPillOpacity(void* obj, int32_t value)
+{
+    lv_obj_set_style_bg_opa(static_cast<lv_obj_t*>(obj), static_cast<lv_opa_t>(value), 0);
+}
+
+void setArrowOpacity(void* obj, int32_t value)
+{
+    lv_obj_set_style_text_opa(static_cast<lv_obj_t*>(obj), static_cast<lv_opa_t>(value), 0);
+}
+
+void startGestureAnim(lv_obj_t* obj, void (*exec_cb)(void*, int32_t),
+                      int32_t from, int32_t to, uint32_t time_ms)
+{
+    if (!obj) {
+        return;
+    }
+    lv_anim_del(obj, exec_cb);
+
+    lv_anim_t anim;
+    lv_anim_init(&anim);
+    lv_anim_set_var(&anim, obj);
+    lv_anim_set_exec_cb(&anim, exec_cb);
+    lv_anim_set_values(&anim, from, to);
+    lv_anim_set_time(&anim, time_ms);
+    lv_anim_set_path_cb(&anim, lv_anim_path_ease_out);
+    lv_anim_start(&anim);
+}
+
 } // namespace
 
 ScreenManager& ScreenManager::instance()
@@ -64,6 +116,8 @@ ScreenManager& ScreenManager::instance()
 void ScreenManager::create()
 {
     current_ = ScreenId::Clock;
+    pending_screen_ = ScreenId::Clock;
+    clearGestureOverlayPointers();
     clock_.onEnter();
     attachGestureHandler(lv_scr_act());
     tick_timer_ = lv_timer_create(onTickTimer, 1000, this);
@@ -76,6 +130,12 @@ void ScreenManager::destroy()
         tick_timer_ = nullptr;
     }
 
+    if (gesture_switch_timer_) {
+        lv_timer_del(gesture_switch_timer_);
+        gesture_switch_timer_ = nullptr;
+    }
+
+    clearGestureFeedback();
     detachGestureHandler();
     if (current_ == ScreenId::Clock) {
         clock_.onExit();
@@ -132,16 +192,25 @@ void ScreenManager::onGestureEvent(lv_event_t* event)
     const lv_event_code_t code = lv_event_get_code(event);
     const uint32_t tick = lv_tick_get();
     if (code == LV_EVENT_PRESSED) {
+        manager->clearGestureFeedback();
         manager->swipe_detector_.press(currentTouchPoint(), tick);
     } else if (code == LV_EVENT_PRESSING) {
         manager->swipe_detector_.move(currentTouchPoint());
+        SwipeGestureProgress progress{};
+        if (manager->swipe_detector_.progress(&progress)) {
+            manager->updateGestureFeedback(progress);
+        }
     } else if (code == LV_EVENT_RELEASED) {
         SwipeGestureStats stats{};
         const SwipeDirection swipe =
             manager->swipe_detector_.release(currentTouchPoint(), tick, &stats);
+        if (swipe == SwipeDirection::None) {
+            manager->settleGestureFeedback(false, swipe);
+        }
         manager->handleSwipe(swipe, stats);
     } else if (code == LV_EVENT_PRESS_LOST) {
         manager->swipe_detector_.reset();
+        manager->settleGestureFeedback(false, SwipeDirection::None);
     }
 }
 
@@ -153,14 +222,175 @@ void ScreenManager::onTickTimer(lv_timer_t* timer)
     }
 }
 
+void ScreenManager::onGestureSwitchTimer(lv_timer_t* timer)
+{
+    auto* manager = static_cast<ScreenManager*>(timer->user_data);
+    if (manager) {
+        const ScreenId target = manager->pending_screen_;
+        manager->gesture_switch_timer_ = nullptr;
+        manager->switchTo(target);
+    }
+}
+
+void ScreenManager::ensureGestureOverlay()
+{
+    lv_obj_t* root = lv_scr_act();
+    if (!root) {
+        return;
+    }
+    if (gesture_overlay_ && gesture_screen_root_ == root) {
+        lv_obj_move_foreground(gesture_overlay_);
+        return;
+    }
+
+    gesture_screen_root_ = root;
+    gesture_overlay_ = lv_obj_create(root);
+    lv_obj_set_size(gesture_overlay_, kScreenW, kScreenH);
+    lv_obj_set_pos(gesture_overlay_, 0, 0);
+    clearObjStyle(gesture_overlay_);
+    lv_obj_clear_flag(gesture_overlay_, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_bg_opa(gesture_overlay_, LV_OPA_TRANSP, 0);
+    lv_obj_add_flag(gesture_overlay_, LV_OBJ_FLAG_HIDDEN);
+
+    gesture_pill_ = lv_obj_create(gesture_overlay_);
+    lv_obj_set_size(gesture_pill_, kGesturePillW, kGesturePillH);
+    lv_obj_set_pos(gesture_pill_, 8, kGesturePillY);
+    clearObjStyle(gesture_pill_);
+    lv_obj_clear_flag(gesture_pill_, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_radius(gesture_pill_, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(gesture_pill_, lv_color_hex(0xffffff), 0);
+    lv_obj_set_style_bg_opa(gesture_pill_, LV_OPA_TRANSP, 0);
+
+    gesture_arrow_ = lv_label_create(gesture_overlay_);
+    lv_obj_set_size(gesture_arrow_, kGestureArrowW, kGestureArrowH);
+    lv_obj_set_pos(gesture_arrow_, 24, kGestureArrowY);
+    clearObjStyle(gesture_arrow_);
+    lv_obj_clear_flag(gesture_arrow_, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_text_color(gesture_arrow_, lv_color_hex(0xffffff), 0);
+    lv_obj_set_style_text_opa(gesture_arrow_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_text_align(gesture_arrow_, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_text(gesture_arrow_, LV_SYMBOL_RIGHT);
+
+    lv_obj_move_foreground(gesture_overlay_);
+}
+
+void ScreenManager::updateGestureFeedback(const SwipeGestureProgress& progress)
+{
+    if (progress.direction == SwipeDirection::None || progress.per_mille == 0) {
+        clearGestureFeedback();
+        return;
+    }
+
+    ensureGestureOverlay();
+    if (!gesture_overlay_ || !gesture_pill_ || !gesture_arrow_ || !gesture_screen_root_) {
+        return;
+    }
+
+    lv_anim_del(gesture_screen_root_, setObjX);
+    lv_anim_del(gesture_pill_, setPillOpacity);
+    lv_anim_del(gesture_arrow_, setArrowOpacity);
+
+    const bool swipe_right = progress.direction == SwipeDirection::Right;
+    const int edge_offset = progress.edge_start ? 8 : 18;
+    const int pill_x = swipe_right ? edge_offset : kScreenW - edge_offset - kGesturePillW;
+    const int arrow_x = swipe_right ? pill_x + 16 : pill_x - kGestureArrowW - 10;
+    const int shift_abs = static_cast<int>(progress.per_mille) * kGestureMaxShiftPx / 1000;
+    gesture_root_shift_ = static_cast<int16_t>(swipe_right ? shift_abs : -shift_abs);
+    gesture_feedback_opa_ = static_cast<lv_opa_t>(
+        36 + (static_cast<int>(progress.per_mille) * 168 / 1000));
+
+    lv_obj_clear_flag(gesture_overlay_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(gesture_overlay_);
+    lv_obj_set_pos(gesture_pill_, pill_x, kGesturePillY);
+    lv_obj_set_pos(gesture_arrow_, arrow_x, kGestureArrowY);
+    lv_label_set_text(gesture_arrow_, swipe_right ? LV_SYMBOL_RIGHT : LV_SYMBOL_LEFT);
+    lv_obj_set_x(gesture_screen_root_, gesture_root_shift_);
+    setPillOpacity(gesture_pill_, gesture_feedback_opa_);
+    setArrowOpacity(gesture_arrow_, gesture_feedback_opa_);
+}
+
+void ScreenManager::settleGestureFeedback(bool accepted, SwipeDirection direction)
+{
+    if (!gesture_screen_root_ && !gesture_overlay_) {
+        return;
+    }
+
+    const int target_shift = accepted ?
+        (direction == SwipeDirection::Right ? kGestureAcceptedShiftPx : -kGestureAcceptedShiftPx) : 0;
+    const int target_opa = accepted ? LV_OPA_COVER : LV_OPA_TRANSP;
+
+    if (gesture_screen_root_) {
+        startGestureAnim(gesture_screen_root_, setObjX, gesture_root_shift_,
+                         target_shift, kGestureSettleMs);
+        gesture_root_shift_ = static_cast<int16_t>(target_shift);
+    }
+    if (gesture_pill_) {
+        startGestureAnim(gesture_pill_, setPillOpacity, gesture_feedback_opa_,
+                         target_opa, kGestureSettleMs);
+    }
+    if (gesture_arrow_) {
+        startGestureAnim(gesture_arrow_, setArrowOpacity, gesture_feedback_opa_,
+                         target_opa, kGestureSettleMs);
+    }
+    gesture_feedback_opa_ = static_cast<lv_opa_t>(target_opa);
+}
+
+void ScreenManager::clearGestureFeedback()
+{
+    if (gesture_screen_root_) {
+        lv_anim_del(gesture_screen_root_, setObjX);
+        lv_obj_set_x(gesture_screen_root_, 0);
+    }
+    if (gesture_pill_) {
+        lv_anim_del(gesture_pill_, setPillOpacity);
+        setPillOpacity(gesture_pill_, LV_OPA_TRANSP);
+    }
+    if (gesture_arrow_) {
+        lv_anim_del(gesture_arrow_, setArrowOpacity);
+        setArrowOpacity(gesture_arrow_, LV_OPA_TRANSP);
+    }
+    if (gesture_overlay_) {
+        lv_obj_add_flag(gesture_overlay_, LV_OBJ_FLAG_HIDDEN);
+    }
+    gesture_root_shift_ = 0;
+    gesture_feedback_opa_ = LV_OPA_TRANSP;
+}
+
+void ScreenManager::clearGestureOverlayPointers()
+{
+    gesture_overlay_ = nullptr;
+    gesture_pill_ = nullptr;
+    gesture_arrow_ = nullptr;
+    gesture_screen_root_ = nullptr;
+    gesture_root_shift_ = 0;
+    gesture_feedback_opa_ = LV_OPA_TRANSP;
+}
+
 void ScreenManager::handleSwipe(SwipeDirection swipe, const SwipeGestureStats& stats)
 {
     const ScreenId target = nextScreenForSwipe(current_, swipe);
-    if (target != current_) {
-        ESP_LOGI(kTag, "switch %s -> %s by swipe %s dx=%d dy=%d dt=%lu samples=%u",
-                 screenName(current_), screenName(target), swipeName(swipe),
-                 stats.dx, stats.dy, static_cast<unsigned long>(stats.duration_ms),
-                 static_cast<unsigned>(stats.samples));
+    if (target == current_) {
+        if (swipe != SwipeDirection::None) {
+            settleGestureFeedback(false, swipe);
+        }
+        return;
+    }
+
+    ESP_LOGI(kTag, "switch %s -> %s by swipe %s dx=%d dy=%d dt=%lu samples=%u edge=%d",
+             screenName(current_), screenName(target), swipeName(swipe),
+             stats.dx, stats.dy, static_cast<unsigned long>(stats.duration_ms),
+             static_cast<unsigned>(stats.samples), stats.edge_start ? 1 : 0);
+
+    settleGestureFeedback(true, swipe);
+    pending_screen_ = target;
+    if (gesture_switch_timer_) {
+        lv_timer_del(gesture_switch_timer_);
+        gesture_switch_timer_ = nullptr;
+    }
+    gesture_switch_timer_ = lv_timer_create(onGestureSwitchTimer, kGestureSwitchDelayMs, this);
+    if (gesture_switch_timer_) {
+        lv_timer_set_repeat_count(gesture_switch_timer_, 1);
+    } else {
         switchTo(target);
     }
 }
@@ -170,6 +400,9 @@ void ScreenManager::switchTo(ScreenId target)
     if (target == current_) {
         return;
     }
+
+    clearGestureFeedback();
+    clearGestureOverlayPointers();
 
     if (current_ == ScreenId::Clock) {
         clock_.onExit();
@@ -184,5 +417,7 @@ void ScreenManager::switchTo(ScreenId target)
     }
 
     current_ = target;
+    pending_screen_ = target;
+    clearGestureOverlayPointers();
     attachGestureHandler(lv_scr_act());
 }

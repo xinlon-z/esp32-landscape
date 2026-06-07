@@ -20,12 +20,21 @@ struct SwipeGestureStats {
     int dy;
     uint32_t duration_ms;
     uint16_t samples;
+    bool edge_start;
+};
+
+struct SwipeGestureProgress {
+    SwipeDirection direction = SwipeDirection::None;
+    uint16_t per_mille = 0;
+    int dx = 0;
+    bool edge_start = false;
 };
 
 class SwipeGestureDetector {
 public:
     void press(TouchPoint point, uint32_t tick_ms = 0);
     void move(TouchPoint point);
+    bool progress(SwipeGestureProgress* progress) const;
     SwipeDirection release(TouchPoint point, uint32_t tick_ms = 0,
                            SwipeGestureStats* stats = nullptr);
     void reset();
@@ -33,6 +42,7 @@ public:
 private:
     bool pressed_ = false;
     TouchPoint start_{0, 0};
+    TouchPoint latest_{0, 0};
     int16_t min_y_ = 0;
     int16_t max_y_ = 0;
     uint32_t start_tick_ms_ = 0;

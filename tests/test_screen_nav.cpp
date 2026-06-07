@@ -45,3 +45,47 @@ TEST(ScreenNav, SwipeAndTransition)
         EXPECT_FALSE(EventBus::get().poll(&event)) << "feature action queue not empty";
     }
 }
+
+TEST(ScreenNav, SwipeTimingAndEdgeRules)
+{
+    SwipeGestureDetector detector;
+    SwipeGestureStats stats{};
+
+    detector.press({40, 80}, 1000);
+    detector.move({120, 81});
+    EXPECT_EQ(detector.release({183, 81}, 1665, &stats), SwipeDirection::None)
+        << "production ghost drift dx=143 dt=665 must not navigate";
+
+    detector.press({620, 100}, 2000);
+    detector.move({420, 104});
+    EXPECT_EQ(detector.release({193, 121}, 2095, &stats), SwipeDirection::Left)
+        << "fast right-edge left swipe should remain accepted";
+
+    detector.press({250, 90}, 3000);
+    EXPECT_EQ(detector.release({380, 92}, 3400, &stats), SwipeDirection::None)
+        << "center gestures need stricter timing than edge gestures";
+
+    detector.press({250, 90}, 4000);
+    EXPECT_EQ(detector.release({480, 92}, 4160, &stats), SwipeDirection::Right)
+        << "fast deliberate center swipe should still work";
+}
+
+TEST(ScreenNav, DragProgressReportsDirectionAndClamps)
+{
+    SwipeGestureDetector detector;
+    SwipeGestureProgress progress{};
+
+    detector.press({620, 90}, 100);
+    detector.move({560, 92});
+    EXPECT_TRUE(detector.progress(&progress));
+    EXPECT_EQ(progress.direction, SwipeDirection::Left);
+    EXPECT_GT(progress.per_mille, 0u);
+    EXPECT_LT(progress.per_mille, 1000u);
+
+    detector.move({430, 92});
+    EXPECT_TRUE(detector.progress(&progress));
+    EXPECT_EQ(progress.per_mille, 1000u);
+
+    detector.reset();
+    EXPECT_FALSE(detector.progress(&progress));
+}
