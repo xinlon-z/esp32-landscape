@@ -24,7 +24,7 @@ namespace {
 
 constexpr const char *kTag = "clock_net";
 constexpr const char *kNtpServers[] = {
-    "ntp.ntsc.ac.cn",
+    "pool.ntp.org",
     "ntp.aliyun.com",
     "ntp.tencent.com",
 };
