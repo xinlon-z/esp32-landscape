@@ -7,12 +7,12 @@
 #include "clock_net.h"
 #include "music_mqtt.h"
 #include "clock_secrets.h"
+#include "app/features/music/util/music_trace.h"
 #include "app/services/mqtt_service.h"
 #include "app/services/cover_service.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "lwip/netdb.h"
 
@@ -76,11 +76,8 @@ constexpr StreamConfig kCoverStream = {
     StreamKind::Cover,
 };
 
-SemaphoreHandle_t s_state_mutex = nullptr;
 TaskHandle_t s_metadata_task = nullptr;
 TaskHandle_t s_cover_task = nullptr;
-MusicState s_state;
-bool s_has_state = false;
 
 bool writeAll(int sock, const uint8_t* data, size_t len)
 {
@@ -293,18 +290,11 @@ void updateState(const char* field, const char* payload, size_t payload_len)
                                      ? static_cast<uint32_t>(xTaskGetTickCount() * portTICK_PERIOD_MS)
                                      : 0;
     MqttService::get().applyField(field, payload, payload_len, progress_ms);
-    const MusicState service_state = MqttService::get().snapshot();
-
-    if (xSemaphoreTake(s_state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        s_state = service_state;
-        s_has_state = true;
-        xSemaphoreGive(s_state_mutex);
-    }
 
     if (strcmp(field, "title") == 0 || strcmp(field, "artist") == 0 ||
         strcmp(field, "album") == 0 || strcmp(field, "active") == 0 ||
         strcmp(field, "playing") == 0 || strcmp(field, "ssnc/prgr") == 0) {
-        ESP_LOGI(kTag, "state %s=%.*s", field, static_cast<int>(payload_len), payload);
+        MUSIC_TRACE_LOGI(kTag, "state %s=%.*s", field, static_cast<int>(payload_len), payload);
     }
 }
 
@@ -334,9 +324,8 @@ void updateCover(uint8_t* data, uint32_t size)
         return;
     }
 
-    // CoverService takes ownership of the original payload. Keeping a second
-    // legacy pending-copy here makes metadata latency worse during track
-    // changes, so MusicMqtt::takeCover is intentionally no longer fed.
+    // CoverService takes ownership of the original payload; the UI reads the
+    // decoded result from its service snapshot.
     CoverService::get().acceptJpeg(data, size);
     ESP_LOGI(kTag, "cover received: %lu bytes", static_cast<unsigned long>(size));
 }
@@ -473,9 +462,6 @@ void mqttTask(void* arg)
 
 void MusicMqtt::init()
 {
-    if (!s_state_mutex) {
-        s_state_mutex = xSemaphoreCreateMutex();
-    }
     if (!s_metadata_task) {
         xTaskCreatePinnedToCore(mqttTask, "music_meta", kMetadataTaskStackBytes,
                                 const_cast<StreamConfig*>(&kMetadataStream),
@@ -488,30 +474,5 @@ void MusicMqtt::init()
                                 kCoverTaskPriority, &s_cover_task,
                                 kCoverTaskCore);
     }
-}
-
-bool MusicMqtt::getState(MusicState* state)
-{
-    if (!state || !s_state_mutex) {
-        return false;
-    }
-
-    bool has_state = false;
-    if (xSemaphoreTake(s_state_mutex, pdMS_TO_TICKS(20)) == pdTRUE) {
-        *state = s_state;
-        has_state = s_has_state;
-        xSemaphoreGive(s_state_mutex);
-    }
-    return has_state;
-}
-
-bool MusicMqtt::takeCover(CoverImage* cover)
-{
-    if (!cover) {
-        return false;
-    }
-    cover->data = nullptr;
-    cover->size = 0;
-    return false;
 }
 

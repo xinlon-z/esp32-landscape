@@ -10,23 +10,16 @@ namespace {
 int render_count = 0;
 int cover_placeholder_count = 0;
 int cover_render_count = 0;
-int take_cover_count = 0;
 MusicDisplayState last_rendered{};
-} // namespace
 
-namespace MusicMqtt {
-struct CoverImage {
-    uint8_t* data = nullptr;
-    uint32_t size = 0;
-};
-
-void init() {}
-bool takeCover(CoverImage*)
+void resetCounters()
 {
-    ++take_cover_count;
-    return false;
+    render_count = 0;
+    cover_placeholder_count = 0;
+    cover_render_count = 0;
+    last_rendered = MusicDisplayState{};
 }
-} // namespace MusicMqtt
+} // namespace
 
 void MusicView::create() {}
 void MusicView::destroy() {}
@@ -47,6 +40,7 @@ BackgroundWidget::~BackgroundWidget() {}
 
 TEST(MusicPresenterEventBus, TickAndCoverRender)
 {
+    resetCounters();
     EventBus::get().resetForTest();
     CoverService::get().clear();
 
@@ -62,8 +56,6 @@ TEST(MusicPresenterEventBus, TickAndCoverRender)
         << "start should not consume queued music event";
     EXPECT_TRUE(event.type == AppEventType::MusicStateChanged)
         << "queued event should remain a music event";
-    EXPECT_TRUE(take_cover_count == 0)
-        << "start should not pump pending covers";
 
     EXPECT_TRUE(MqttService::get().applyField("title", "Ticked", 6))
         << "second music update should publish an event";
@@ -81,14 +73,68 @@ TEST(MusicPresenterEventBus, TickAndCoverRender)
     presenter.tick();
     EXPECT_TRUE(!EventBus::get().poll(&event))
         << "tick should consume queued presenter events";
-    EXPECT_TRUE(take_cover_count == 0)
-        << "tick should not pump pending covers";
     EXPECT_TRUE(render_count >= 2) << "presenter should render on start and tick";
     EXPECT_TRUE(cover_placeholder_count >= 1) << "start should render cover snapshot";
     EXPECT_TRUE(cover_placeholder_count == placeholder_before_cover_event)
         << "ready cover should not render another placeholder";
     EXPECT_TRUE(cover_render_count == 1)
         << "tick should render decoded service-owned cover";
+
+    presenter.stop();
+    CoverService::get().clear();
+}
+
+TEST(MusicPresenterEventBus, TickUsesSnapshotWhenMusicEventWasAlreadyConsumed)
+{
+    resetCounters();
+    EventBus::get().resetForTest();
+    CoverService::get().clear();
+
+    MusicView view;
+    MusicPresenter presenter(view);
+    presenter.start();
+
+    EXPECT_TRUE(MqttService::get().applyField("title", "SnapshotOnly", 12))
+        << "music update should publish an event";
+
+    AppEvent drained{};
+    EXPECT_TRUE(EventBus::get().poll(&drained))
+        << "test should consume the event before the presenter sees it";
+
+    presenter.tick();
+    EXPECT_STREQ(last_rendered.title, "SnapshotOnly")
+        << "presenter must reconcile from MqttService snapshot, not only EventBus";
+
+    presenter.stop();
+    CoverService::get().clear();
+}
+
+TEST(MusicPresenterEventBus, TickUsesSnapshotWhenCoverEventWasAlreadyConsumed)
+{
+    resetCounters();
+    EventBus::get().resetForTest();
+    CoverService::get().clear();
+
+    MusicView view;
+    MusicPresenter presenter(view);
+    presenter.start();
+
+    uint8_t* cover = static_cast<uint8_t*>(heap_caps_malloc(128, MALLOC_CAP_8BIT));
+    ASSERT_TRUE(cover != nullptr) << "test cover allocation should succeed";
+    cover[0] = 0xff;
+    cover[1] = 0xd8;
+    ASSERT_TRUE(CoverService::get().acceptJpeg(cover, 128) != 0)
+        << "cover service should publish loading event";
+    ASSERT_TRUE(CoverService::get().tickDecodeForTest())
+        << "cover decode should publish ready event";
+
+    AppEvent drained{};
+    while (EventBus::get().poll(&drained)) {
+    }
+
+    presenter.tick();
+    EXPECT_EQ(cover_render_count, 1)
+        << "presenter must reconcile cover readiness from CoverService snapshot";
 
     presenter.stop();
     CoverService::get().clear();
@@ -101,6 +147,7 @@ TEST(MusicPresenterEventBus, TickAndCoverRender)
 // reflects the wall-clock advance even at long elapsed offsets.
 TEST(MusicPresenterEventBus, ElapsedFramesNoOverflowAtLongPlayback)
 {
+    resetCounters();
     EventBus::get().resetForTest();
     CoverService::get().clear();
 

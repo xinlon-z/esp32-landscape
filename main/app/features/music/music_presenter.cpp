@@ -4,7 +4,7 @@
 #include "app/services/cover_service.h"
 #include "app/services/mqtt_service.h"
 #include "app/services/power_service.h"
-#include "esp_log.h"
+#include "util/music_trace.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "lvgl.h"
@@ -54,36 +54,47 @@ void MusicPresenter::tick()
 
     bool music_changed = false;
     bool cover_changed = false;
-    bool power_changed = false;
+    bool force_music_render = false;
     AppEvent event{};
     while (EventBus::get().poll(&event)) {
-        if (event.type == AppEventType::MusicStateChanged &&
-            event.payload.music_state.revision != last_music_revision_) {
-            last_music_revision_ = event.payload.music_state.revision;
+        if (event.type == AppEventType::MusicStateChanged) {
             music_changed = true;
-        } else if (event.type == AppEventType::CoverStateChanged &&
-                   (event.payload.cover_state.cover_id != last_cover_id_ ||
-                    event.payload.cover_state.status != last_cover_status_)) {
-            last_cover_id_ = event.payload.cover_state.cover_id;
-            last_cover_status_ = event.payload.cover_state.status;
+        } else if (event.type == AppEventType::CoverStateChanged) {
             cover_changed = true;
         } else if (event.type == AppEventType::PowerStateChanged) {
-            power_changed = true;
+            // PowerService is reconciled from its snapshot below; the event
+            // only tells us something may have changed.
         } else if (event.type == AppEventType::FeatureAction &&
                    event.payload.feature_action.screen_id == static_cast<uint8_t>(ScreenId::Music)) {
-            music_changed = true;
+            force_music_render = true;
         }
     }
 
+    const MusicState latest_music = MqttService::get().snapshot();
+    if (latest_music.revision != last_music_revision_) {
+        music_changed = true;
+    }
     if (music_changed) {
+        music_state_ = latest_music;
+        last_music_revision_ = music_state_.revision;
+        MUSIC_TRACE_LOGI("music_pre", "[trace] music rev=%u rendered (title=%s)",
+                         music_state_.revision, music_state_.title);
+    }
+
+    const CoverState latest_cover = CoverService::get().active();
+    if (latest_cover.cover_id != last_cover_id_ || latest_cover.status != last_cover_status_) {
+        cover_changed = true;
+    }
+    if (cover_changed) {
+        last_cover_id_ = latest_cover.cover_id;
+        last_cover_status_ = latest_cover.status;
+    }
+
+    if (force_music_render && !music_changed) {
         music_state_ = MqttService::get().snapshot();
         last_music_revision_ = music_state_.revision;
-        ESP_LOGI("music_pre", "[trace] music rev=%u rendered (title=%s)",
-                 music_state_.revision, music_state_.title);
     }
-    if (power_changed) {
-        syncDimState();
-    }
+    syncDimState();
 
     renderMusic();
     if (cover_changed) {
@@ -125,8 +136,8 @@ void MusicPresenter::renderCover()
 
     BorrowedCover borrowed{};
     if (CoverService::get().borrow(cover.cover_id, &borrowed) && borrowed.image) {
-        ESP_LOGI("music_pre", "[trace] cover %u render status=%d",
-                 last_cover_id_, static_cast<int>(last_cover_status_));
+        MUSIC_TRACE_LOGI("music_pre", "[trace] cover %u render status=%d",
+                         last_cover_id_, static_cast<int>(last_cover_status_));
         view_.renderCover(borrowed);
     } else {
         view_.renderCoverPlaceholder();

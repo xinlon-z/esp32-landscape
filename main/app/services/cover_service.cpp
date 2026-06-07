@@ -1,6 +1,7 @@
 #include "cover_service.h"
 
 #include "../core/event/event_bus.h"
+#include "app/features/music/util/music_trace.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "extra/libs/sjpg/tjpgd.h"
@@ -10,7 +11,7 @@
 
 namespace {
 [[maybe_unused]] constexpr const char* kTag = "cover_service";
-constexpr uint16_t kCoverSize = 144;
+constexpr uint16_t kDecodedCoverSize = CoverService::kCoverSize;
 constexpr size_t kJpegWorkBytes = 4096;
 constexpr int kDecodeWorkerCore = 1;
 constexpr UBaseType_t kDecodeWorkerPriority = 2;
@@ -75,7 +76,7 @@ lv_color_t* resampleCoverToSquare(const lv_color_t* src, uint16_t src_w, uint16_
     if (!src || src_w == 0 || src_h == 0) {
         return nullptr;
     }
-    lv_color_t* dst = allocPixels(kCoverSize * kCoverSize);
+    lv_color_t* dst = allocPixels(kDecodedCoverSize * kDecodedCoverSize);
     if (!dst) {
         return nullptr;
     }
@@ -90,28 +91,28 @@ lv_color_t* resampleCoverToSquare(const lv_color_t* src, uint16_t src_w, uint16_
         crop_h = src_w;
         crop_y = static_cast<uint16_t>((src_h - crop_h) / 2u);
     }
-    for (uint16_t y = 0; y < kCoverSize; ++y) {
-        uint16_t sy = static_cast<uint16_t>(crop_y + (static_cast<uint32_t>(y) * crop_h) / kCoverSize);
+    for (uint16_t y = 0; y < kDecodedCoverSize; ++y) {
+        uint16_t sy = static_cast<uint16_t>(crop_y + (static_cast<uint32_t>(y) * crop_h) / kDecodedCoverSize);
         if (sy >= src_h) sy = static_cast<uint16_t>(src_h - 1);
-        for (uint16_t x = 0; x < kCoverSize; ++x) {
-            uint16_t sx = static_cast<uint16_t>(crop_x + (static_cast<uint32_t>(x) * crop_w) / kCoverSize);
+        for (uint16_t x = 0; x < kDecodedCoverSize; ++x) {
+            uint16_t sx = static_cast<uint16_t>(crop_x + (static_cast<uint32_t>(x) * crop_w) / kDecodedCoverSize);
             if (sx >= src_w) sx = static_cast<uint16_t>(src_w - 1);
-            dst[y * kCoverSize + x] = src[sy * src_w + sx];
+            dst[y * kDecodedCoverSize + x] = src[sy * src_w + sx];
         }
     }
     return dst;
 }
 
 // Returns the largest tjpgd scale factor (0–3, meaning 1/1 through 1/8) such
-// that both decoded dimensions are still >= kCoverSize. Falls back to scale 0
+// that both decoded dimensions are still >= kDecodedCoverSize. Falls back to scale 0
 // if the image is already smaller than the target — the resample will upsample
 // in that case, but there is no better option.
 uint8_t pickJpegScale(uint16_t w, uint16_t h)
 {
     uint8_t scale = 0;
     while (scale < 3 &&
-           (w >> (scale + 1)) >= kCoverSize &&
-           (h >> (scale + 1)) >= kCoverSize) {
+           (w >> (scale + 1)) >= kDecodedCoverSize &&
+           (h >> (scale + 1)) >= kDecodedCoverSize) {
         ++scale;
     }
     return scale;
@@ -184,7 +185,7 @@ CoverStatus decodeJpeg(const uint8_t* jpeg_data, uint32_t jpeg_size,
     }
 
     ESP_LOGI(kTag, "cover decoded: %ux%u -> %ux%u -> %ux%u",
-             jd.width, jd.height, out_w, out_h, kCoverSize, kCoverSize);
+             jd.width, jd.height, out_w, out_h, kDecodedCoverSize, kDecodedCoverSize);
     *out_pixels = pixels;
     return CoverStatus::Ready;
 }
@@ -229,8 +230,8 @@ uint32_t CoverService::acceptJpeg(uint8_t* data, uint32_t size)
         has_pending_ = true;
     }
 
-    ESP_LOGI(kTag, "[trace] cover %u accepted (%u bytes), decode queued",
-             cover_id, static_cast<unsigned>(size));
+    MUSIC_TRACE_LOGI(kTag, "[trace] cover %u accepted (%u bytes), decode queued",
+                     cover_id, static_cast<unsigned>(size));
     publishChanged(cover_id, CoverStatus::Loading);
     ensureDecodeWorkerStarted();
     xSemaphoreGive(decode_signal_);
@@ -259,6 +260,36 @@ bool CoverService::borrow(uint32_t cover_id, BorrowedCover* cover)
     cover->jpeg_size = active_.jpeg_size;
     cover->image = active_.pixels ? &active_.image : nullptr;
     cover->pixels = active_.pixels;
+    return true;
+}
+
+bool CoverService::copyPixels(uint32_t cover_id,
+                              lv_color_t* dst_pixels,
+                              uint32_t dst_pixel_count,
+                              lv_img_dsc_t* out_image)
+{
+    if (cover_id == 0 || !dst_pixels) {
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (active_.cover_id != cover_id ||
+        active_.status != CoverStatus::Ready ||
+        !active_.pixels) {
+        return false;
+    }
+
+    const uint32_t pixel_count = active_.image.header.w * active_.image.header.h;
+    if (pixel_count == 0 || pixel_count > dst_pixel_count) {
+        return false;
+    }
+
+    memcpy(dst_pixels, active_.pixels, pixel_count * sizeof(lv_color_t));
+    if (out_image) {
+        *out_image = active_.image;
+        out_image->data = reinterpret_cast<const uint8_t*>(dst_pixels);
+        out_image->data_size = pixel_count * sizeof(lv_color_t);
+    }
     return true;
 }
 
@@ -339,16 +370,20 @@ bool CoverService::runOnePendingDecode()
         has_pending_ = false;
     }
 
+#if CLOCK_TRACE_MUSIC
     const uint32_t t_start = static_cast<uint32_t>(xTaskGetTickCount()) * portTICK_PERIOD_MS;
+#endif
 
     // Decode WITHOUT holding the mutex so active() / borrow() are never
     // blocked during the ~250 ms JPEG decode.
     lv_color_t* pixels = nullptr;
     const CoverStatus status = decodeJpeg(job.jpeg_data, job.jpeg_size, &pixels);
 
+#if CLOCK_TRACE_MUSIC
     const uint32_t t_elapsed = (static_cast<uint32_t>(xTaskGetTickCount()) * portTICK_PERIOD_MS) - t_start;
-    ESP_LOGI(kTag, "[trace] cover %u decode done in %u ms, status=%d",
-             job.cover_id, t_elapsed, static_cast<int>(status));
+    MUSIC_TRACE_LOGI(kTag, "[trace] cover %u decode done in %u ms, status=%d",
+                     job.cover_id, t_elapsed, static_cast<int>(status));
+#endif
 
     // Store result under mutex only if this cover_id is still current.
     bool stored = false;
@@ -364,11 +399,11 @@ bool CoverService::runOnePendingDecode()
             if (status == CoverStatus::Ready && pixels) {
                 active_.image = {};
                 active_.image.header.always_zero = 0;
-                active_.image.header.w = kCoverSize;
-                active_.image.header.h = kCoverSize;
+                active_.image.header.w = kDecodedCoverSize;
+                active_.image.header.h = kDecodedCoverSize;
                 active_.image.header.cf = LV_IMG_CF_TRUE_COLOR;
                 active_.image.data = reinterpret_cast<const uint8_t*>(pixels);
-                active_.image.data_size = kCoverSize * kCoverSize * sizeof(lv_color_t);
+                active_.image.data_size = kDecodedCoverSize * kDecodedCoverSize * sizeof(lv_color_t);
             }
             stored = true;
         }

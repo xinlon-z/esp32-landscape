@@ -1,6 +1,6 @@
 #include "music_background.h"
 
-#include "esp_log.h"
+#include "music_trace.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -8,15 +8,19 @@
 
 namespace {
 
+#if CLOCK_TRACE_MUSIC
 constexpr const char* kMusicBgTag = "music_bg";
+#endif
 constexpr uint16_t kTransposeTile  = 16;
 constexpr uint16_t kDownsampleMinW = 128;
 constexpr uint16_t kDownsampleMinH = 64;
 
+#if CLOCK_TRACE_MUSIC
 inline uint32_t traceMs()
 {
     return static_cast<uint32_t>(xTaskGetTickCount()) * portTICK_PERIOD_MS;
 }
+#endif
 
 void renderCoverFill(const lv_color_t* cover, uint16_t cover_w, uint16_t cover_h,
                      lv_color_t* output, uint16_t output_w, uint16_t output_h)
@@ -190,35 +194,49 @@ bool musicGenerateBlurredBackground(const lv_color_t* cover, uint16_t cover_w, u
         const uint16_t ds_w = static_cast<uint16_t>(output_w >> 1);
         const uint16_t ds_h = static_cast<uint16_t>(output_h >> 1);
 
+#if CLOCK_TRACE_MUSIC
         const uint32_t t0 = traceMs();
+#endif
         renderCoverFill(cover, cover_w, cover_h, output, ds_w, ds_h);
+#if CLOCK_TRACE_MUSIC
         const uint32_t t1 = traceMs();
+#endif
 
         const uint16_t radius = blurRadiusFor(ds_w, ds_h);
         blurThreePassesTransposed(output, scratch, ds_w, ds_h, radius);
+#if CLOCK_TRACE_MUSIC
         const uint32_t t2 = traceMs();
+#endif
 
         upscaleNearest2x(output, ds_w, ds_h, scratch, output_w, output_h);
         memcpy(output, scratch, static_cast<size_t>(output_w) * output_h * sizeof(lv_color_t));
+#if CLOCK_TRACE_MUSIC
         const uint32_t t3 = traceMs();
 
-        ESP_LOGI(kMusicBgTag,
-                 "[trace] blur_internal(ds): fill=%u ms, blur=%u ms, "
-                 "upscale+memcpy=%u ms, radius=%u, ds=%ux%u, full=%ux%u",
-                 t1 - t0, t2 - t1, t3 - t2, radius, ds_w, ds_h, output_w, output_h);
+        MUSIC_TRACE_LOGI(kMusicBgTag,
+                         "[trace] blur_internal(ds): fill=%u ms, blur=%u ms, "
+                         "upscale+memcpy=%u ms, radius=%u, ds=%ux%u, full=%ux%u",
+                         t1 - t0, t2 - t1, t3 - t2, radius, ds_w, ds_h, output_w, output_h);
+#endif
     } else {
+#if CLOCK_TRACE_MUSIC
         const uint32_t t0 = traceMs();
+#endif
         renderCoverFill(cover, cover_w, cover_h, output, output_w, output_h);
+#if CLOCK_TRACE_MUSIC
         const uint32_t t1 = traceMs();
+#endif
 
         const uint16_t radius = blurRadiusFor(output_w, output_h);
         blurThreePassesTransposed(output, scratch, output_w, output_h, radius);
+#if CLOCK_TRACE_MUSIC
         const uint32_t t2 = traceMs();
 
-        ESP_LOGI(kMusicBgTag,
-                 "[trace] blur_internal(full): fill=%u ms, blur=%u ms, "
-                 "radius=%u, %ux%u",
-                 t1 - t0, t2 - t1, radius, output_w, output_h);
+        MUSIC_TRACE_LOGI(kMusicBgTag,
+                         "[trace] blur_internal(full): fill=%u ms, blur=%u ms, "
+                         "radius=%u, %ux%u",
+                         t1 - t0, t2 - t1, radius, output_w, output_h);
+#endif
     }
 
     return true;

@@ -1,6 +1,7 @@
 #include "background_blur_service.h"
 
 #include "app/features/music/util/music_background.h"
+#include "app/features/music/util/music_trace.h"
 #include "app/services/cover_service.h"
 #include "platform/lvgl_port.h"
 
@@ -66,13 +67,7 @@ bool BackgroundBlurService::request(const BorrowedCover& cover,
                                     uint16_t target_h,
                                     const lv_img_dsc_t** out_image)
 {
-    if (cover.cover_id == 0 || !cover.pixels || !cover.image || target_w == 0 || target_h == 0) {
-        return false;
-    }
-
-    const uint16_t src_w = static_cast<uint16_t>(cover.image->header.w);
-    const uint16_t src_h = static_cast<uint16_t>(cover.image->header.h);
-    if (src_w == 0 || src_h == 0) {
+    if (cover.cover_id == 0 || target_w == 0 || target_h == 0) {
         return false;
     }
 
@@ -97,12 +92,28 @@ bool BackgroundBlurService::request(const BorrowedCover& cover,
     }
     xSemaphoreGive(mutex_);
 
-    lv_color_t* src_copy = allocPixels(static_cast<size_t>(src_w) * src_h);
+    lv_color_t* src_copy = allocPixels(CoverService::kCoverPixelCount);
     if (!src_copy) {
-        ESP_LOGW(kTag, "failed to alloc src copy %ux%u", src_w, src_h);
+        ESP_LOGW(kTag, "failed to alloc src copy %ux%u",
+                 CoverService::kCoverSize, CoverService::kCoverSize);
         return false;
     }
-    memcpy(src_copy, cover.pixels, static_cast<size_t>(src_w) * src_h * sizeof(lv_color_t));
+
+    lv_img_dsc_t src_image{};
+    if (!CoverService::get().copyPixels(cover.cover_id,
+                                        src_copy,
+                                        CoverService::kCoverPixelCount,
+                                        &src_image)) {
+        heap_caps_free(src_copy);
+        return false;
+    }
+
+    const uint16_t src_w = static_cast<uint16_t>(src_image.header.w);
+    const uint16_t src_h = static_cast<uint16_t>(src_image.header.h);
+    if (src_w == 0 || src_h == 0) {
+        heap_caps_free(src_copy);
+        return false;
+    }
 
     xSemaphoreTake(mutex_, portMAX_DELAY);
     pending_.cover_id = cover.cover_id;
@@ -206,14 +217,18 @@ void BackgroundBlurService::taskLoop()
                 continue;
             }
 
+#if CLOCK_TRACE_MUSIC
             const uint32_t t_blur_start = static_cast<uint32_t>(xTaskGetTickCount()) * portTICK_PERIOD_MS;
+#endif
             const bool ok = musicGenerateBlurredBackground(
                 job.src_pixels, job.src_w, job.src_h,
                 out_pixels, job.target_w, job.target_h, scratch_);
+#if CLOCK_TRACE_MUSIC
             const uint32_t t_blur_elapsed =
                 (static_cast<uint32_t>(xTaskGetTickCount()) * portTICK_PERIOD_MS) - t_blur_start;
-            ESP_LOGI(kTag, "[trace] blur cover=%u took %u ms ok=%d",
-                     job.cover_id, t_blur_elapsed, ok ? 1 : 0);
+            MUSIC_TRACE_LOGI(kTag, "[trace] blur cover=%u took %u ms ok=%d",
+                             job.cover_id, t_blur_elapsed, ok ? 1 : 0);
+#endif
             if (!ok) {
                 heap_caps_free(out_pixels);
                 freeJob(&job);
@@ -270,7 +285,7 @@ void BackgroundBlurService::onAsyncReady(void* user_data)
     ud = svc->ready_user_data_;
     need_free = svc->stale_.pixels != nullptr;
     xSemaphoreGive(svc->mutex_);
-    ESP_LOGI(kTag, "[trace] async ready cover=%u stale_alive=%d", cover_id, need_free ? 1 : 0);
+    MUSIC_TRACE_LOGI(kTag, "[trace] async ready cover=%u stale_alive=%d", cover_id, need_free ? 1 : 0);
     if (cb) {
         cb(cover_id, ud);
     }

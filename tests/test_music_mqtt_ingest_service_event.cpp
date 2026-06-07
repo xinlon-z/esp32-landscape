@@ -41,11 +41,6 @@ TEST(MusicMqttIngest, StateAndCoverEvents)
     EXPECT_STREQ(service_state.title, "Ingested") << "service snapshot did not receive ingest";
     EXPECT_EQ(service_state.revision, before.revision + 1) << "ingest should increment service revision";
 
-    MusicState legacy_state{};
-    EXPECT_TRUE(MusicMqtt::getState(&legacy_state)) << "legacy getState should still report state";
-    EXPECT_STREQ(legacy_state.title, "Ingested") << "legacy state did not mirror service ingest";
-    EXPECT_EQ(legacy_state.revision, service_state.revision) << "legacy state revision mismatch";
-
     AppEvent event{};
     EXPECT_TRUE(EventBus::get().poll(&event)) << "ingest should publish MusicStateChanged";
     EXPECT_EQ(event.type, AppEventType::MusicStateChanged) << "ingest event type mismatch";
@@ -76,6 +71,20 @@ TEST(MusicMqttIngest, StateAndCoverEvents)
     EXPECT_EQ(borrowed.jpeg_size, 128) << "borrowed cover ingest size mismatch";
     EXPECT_TRUE(borrowed.image != nullptr) << "cover ingest should expose image descriptor";
     EXPECT_TRUE(borrowed.pixels != nullptr) << "cover ingest should expose decoded pixels";
+
+    auto* copied_pixels = static_cast<lv_color_t*>(
+        heap_caps_malloc(CoverService::kCoverPixelCount * sizeof(lv_color_t), MALLOC_CAP_8BIT));
+    ASSERT_TRUE(copied_pixels != nullptr) << "test cover copy allocation should succeed";
+    lv_img_dsc_t copied_image{};
+    EXPECT_TRUE(CoverService::get().copyPixels(active.cover_id,
+                                               copied_pixels,
+                                               CoverService::kCoverPixelCount,
+                                               &copied_image))
+        << "cover service should copy pixels under its own lock for UI-owned buffers";
+    EXPECT_EQ(copied_image.header.w, CoverService::kCoverSize);
+    EXPECT_EQ(copied_image.header.h, CoverService::kCoverSize);
+    EXPECT_EQ(copied_image.data, reinterpret_cast<const uint8_t*>(copied_pixels));
+    heap_caps_free(copied_pixels);
 
     EXPECT_TRUE(EventBus::get().poll(&event)) << "cover ingest should publish loading CoverStateChanged";
     EXPECT_EQ(event.type, AppEventType::CoverStateChanged) << "cover ingest event type mismatch";

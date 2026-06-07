@@ -3,6 +3,8 @@
 #include "app/ui/fonts/music_fonts.h"
 #include "util/music_player_icon_geometry.h"
 
+#include <string.h>
+
 namespace {
 constexpr uint32_t kBg0 = 0x050507;
 constexpr uint32_t kBg1 = 0x080a10;
@@ -110,6 +112,9 @@ extern "C" const lv_font_t material_status_icons_20;
 
 void MusicView::create()
 {
+    has_last_state_ = false;
+    last_state_ = MusicDisplayState{};
+
     lv_obj_t* screen = lv_scr_act();
     lv_obj_clean(screen);
     lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
@@ -177,6 +182,8 @@ void MusicView::destroy()
     subtitle_ = nullptr;
     time_ = nullptr;
     play_pause_icon_ = nullptr;
+    has_last_state_ = false;
+    last_state_ = MusicDisplayState{};
     background_.clear();
     cover_.clear();
     visualizer_.clear();
@@ -188,14 +195,28 @@ void MusicView::render(const MusicDisplayState& state)
         return;
     }
 
-    lv_label_set_text(title_, state.title);
-    lv_label_set_text(subtitle_, state.subtitle);
-    lv_label_set_text(time_, state.time);
-    visualizer_.render(state.progress_per_mille, state.playing);
-    if (play_pause_icon_) {
-        lv_label_set_text(play_pause_icon_, state.playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY);
-        alignPlayPauseIcon(play_pause_icon_, state.playing);
+    if (!has_last_state_ || strcmp(last_state_.title, state.title) != 0) {
+        lv_label_set_text(title_, state.title);
     }
+    if (!has_last_state_ || strcmp(last_state_.subtitle, state.subtitle) != 0) {
+        lv_label_set_text(subtitle_, state.subtitle);
+    }
+    if (!has_last_state_ || strcmp(last_state_.time, state.time) != 0) {
+        lv_label_set_text(time_, state.time);
+    }
+    if (!has_last_state_ ||
+        last_state_.progress_per_mille != state.progress_per_mille ||
+        last_state_.playing != state.playing) {
+        visualizer_.render(state.progress_per_mille, state.playing);
+    }
+    if (play_pause_icon_) {
+        if (!has_last_state_ || last_state_.playing != state.playing) {
+            lv_label_set_text(play_pause_icon_, state.playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY);
+            alignPlayPauseIcon(play_pause_icon_, state.playing);
+        }
+    }
+    last_state_ = state;
+    has_last_state_ = true;
 }
 
 void MusicView::renderCover(const BorrowedCover& cover)
@@ -212,5 +233,6 @@ void MusicView::renderCoverPlaceholder()
 
 void MusicView::setDimmed(bool dimmed)
 {
+    background_.setBlurEnabled(!dimmed);
     visualizer_.setDimmed(dimmed);
 }

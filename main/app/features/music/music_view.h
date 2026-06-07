@@ -20,6 +20,8 @@ private:
     lv_obj_t* subtitle_ = nullptr;
     lv_obj_t* time_ = nullptr;
     lv_obj_t* play_pause_icon_ = nullptr;
+    MusicDisplayState last_state_{};
+    bool has_last_state_ = false;
     BackgroundWidget background_;
     CoverWidget cover_;
     VisualizerWidget visualizer_;

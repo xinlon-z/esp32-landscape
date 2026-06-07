@@ -61,9 +61,8 @@ target_include_directories(test_music_presenter_eventbus PRIVATE ${TEST_INCLUDES
 target_link_libraries(test_music_presenter_eventbus GTest::gtest_main)
 gtest_discover_tests(test_music_presenter_eventbus)
 
-# Separate compilation: music_mqtt.cpp must remain inlined (the test calls its
-# anonymous-namespace internals updateState/updateCover directly); compiling
-# mqtt_service.cpp separately avoids the MusicMqtt::CoverImage redefinition.
+# Separate compilation: music_mqtt.cpp must remain inlined because the test
+# calls its anonymous-namespace internals updateState/updateCover directly.
 add_executable(test_music_mqtt_ingest_service_event
     test_music_mqtt_ingest_service_event.cpp
     ${MAIN}/app/services/mqtt_service.cpp

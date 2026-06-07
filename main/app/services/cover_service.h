@@ -28,6 +28,9 @@ struct BorrowedCover {
 
 class CoverService {
 public:
+    static constexpr uint16_t kCoverSize = 144;
+    static constexpr uint32_t kCoverPixelCount = kCoverSize * kCoverSize;
+
     static CoverService& get();
 
     // Queue a JPEG for async decoding on Core 1. Returns the cover_id assigned
@@ -38,6 +41,10 @@ public:
     CoverState active();
     // Borrowed pointers remain valid only while this cover_id is still active.
     bool borrow(uint32_t cover_id, BorrowedCover* cover);
+    bool copyPixels(uint32_t cover_id,
+                    lv_color_t* dst_pixels,
+                    uint32_t dst_pixel_count,
+                    lv_img_dsc_t* out_image);
     void clear();
 
     // Testing support: drives one pending decode synchronously on the caller's
