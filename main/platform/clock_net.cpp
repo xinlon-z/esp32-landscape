@@ -24,9 +24,9 @@ namespace {
 
 constexpr const char *kTag = "clock_net";
 constexpr const char *kNtpServers[] = {
-    "pool.ntp.org",
     "ntp.aliyun.com",
     "ntp.tencent.com",
+    "pool.ntp.org",
 };
 constexpr uint32_t kNtpEpochDelta = 2208988800UL;
 constexpr int kNtpRetryPerServer = 3;
