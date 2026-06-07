@@ -12,25 +12,67 @@ int absInt(int v)
 }
 } // namespace
 
-void SwipeGestureDetector::press(TouchPoint point)
+void SwipeGestureDetector::press(TouchPoint point, uint32_t tick_ms)
 {
     pressed_ = true;
     start_ = point;
+    min_y_ = point.y;
+    max_y_ = point.y;
+    start_tick_ms_ = tick_ms;
+    samples_ = 1;
 }
 
-SwipeDirection SwipeGestureDetector::release(TouchPoint point)
+void SwipeGestureDetector::move(TouchPoint point)
+{
+    if (!pressed_) {
+        return;
+    }
+    if (point.y < min_y_) {
+        min_y_ = point.y;
+    }
+    if (point.y > max_y_) {
+        max_y_ = point.y;
+    }
+    if (samples_ < UINT16_MAX) {
+        ++samples_;
+    }
+}
+
+SwipeDirection SwipeGestureDetector::release(TouchPoint point, uint32_t tick_ms,
+                                             SwipeGestureStats* stats)
 {
     if (!pressed_) {
         return SwipeDirection::None;
     }
+
+    move(point);
     pressed_ = false;
-    return detectSwipe(start_, point);
+    const uint32_t duration = tick_ms - start_tick_ms_;
+    const int dx = point.x - start_.x;
+    const int dy = point.y - start_.y;
+    const int vertical_travel = max_y_ - min_y_;
+
+    if (stats) {
+        *stats = SwipeGestureStats{dx, dy, duration, samples_};
+    }
+
+    if (absInt(dx) < kMinSwipeX ||
+        absInt(dy) > kMaxSwipeY ||
+        vertical_travel > kMaxSwipeY) {
+        return SwipeDirection::None;
+    }
+
+    return dx < 0 ? SwipeDirection::Left : SwipeDirection::Right;
 }
 
 void SwipeGestureDetector::reset()
 {
     pressed_ = false;
     start_ = {0, 0};
+    min_y_ = 0;
+    max_y_ = 0;
+    start_tick_ms_ = 0;
+    samples_ = 0;
 }
 
 SwipeDirection detectSwipe(TouchPoint start, TouchPoint end)

@@ -2,20 +2,28 @@
 
 #include <stdint.h>
 
+#include "esp_log.h"
+
 namespace {
 
-void enableGestureEvents(lv_obj_t* obj)
+constexpr const char* kTag = "screen_mgr";
+
+void enableTouchEvents(lv_obj_t* obj, bool bubble_to_parent)
 {
     if (!obj) {
         return;
     }
 
     lv_obj_add_flag(obj, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_flag(obj, LV_OBJ_FLAG_EVENT_BUBBLE);
+    if (bubble_to_parent) {
+        lv_obj_add_flag(obj, LV_OBJ_FLAG_EVENT_BUBBLE);
+    } else {
+        lv_obj_clear_flag(obj, LV_OBJ_FLAG_EVENT_BUBBLE);
+    }
 
     const uint32_t child_count = lv_obj_get_child_cnt(obj);
     for (uint32_t i = 0; i < child_count; ++i) {
-        enableGestureEvents(lv_obj_get_child(obj, i));
+        enableTouchEvents(lv_obj_get_child(obj, i), true);
     }
 }
 
@@ -27,6 +35,22 @@ TouchPoint currentTouchPoint()
         lv_indev_get_point(indev, &point);
     }
     return TouchPoint{static_cast<int16_t>(point.x), static_cast<int16_t>(point.y)};
+}
+
+const char* screenName(ScreenId screen)
+{
+    return screen == ScreenId::Clock ? "clock" : "music";
+}
+
+const char* swipeName(SwipeDirection swipe)
+{
+    if (swipe == SwipeDirection::Left) {
+        return "left";
+    }
+    if (swipe == SwipeDirection::Right) {
+        return "right";
+    }
+    return "none";
 }
 
 } // namespace
@@ -74,7 +98,7 @@ void ScreenManager::attachGestureHandler(lv_obj_t* root)
     if (!root) {
         return;
     }
-    enableGestureEvents(root);
+    enableTouchEvents(root, false);
 
     if (root == gesture_root_) {
         return;
@@ -82,6 +106,7 @@ void ScreenManager::attachGestureHandler(lv_obj_t* root)
 
     detachGestureHandler();
     lv_obj_add_event_cb(root, onGestureEvent, LV_EVENT_PRESSED, this);
+    lv_obj_add_event_cb(root, onGestureEvent, LV_EVENT_PRESSING, this);
     lv_obj_add_event_cb(root, onGestureEvent, LV_EVENT_RELEASED, this);
     lv_obj_add_event_cb(root, onGestureEvent, LV_EVENT_PRESS_LOST, this);
     gesture_root_ = root;
@@ -105,10 +130,16 @@ void ScreenManager::onGestureEvent(lv_event_t* event)
     }
 
     const lv_event_code_t code = lv_event_get_code(event);
+    const uint32_t tick = lv_tick_get();
     if (code == LV_EVENT_PRESSED) {
-        manager->swipe_detector_.press(currentTouchPoint());
+        manager->swipe_detector_.press(currentTouchPoint(), tick);
+    } else if (code == LV_EVENT_PRESSING) {
+        manager->swipe_detector_.move(currentTouchPoint());
     } else if (code == LV_EVENT_RELEASED) {
-        manager->handleSwipe(manager->swipe_detector_.release(currentTouchPoint()));
+        SwipeGestureStats stats{};
+        const SwipeDirection swipe =
+            manager->swipe_detector_.release(currentTouchPoint(), tick, &stats);
+        manager->handleSwipe(swipe, stats);
     } else if (code == LV_EVENT_PRESS_LOST) {
         manager->swipe_detector_.reset();
     }
@@ -122,10 +153,14 @@ void ScreenManager::onTickTimer(lv_timer_t* timer)
     }
 }
 
-void ScreenManager::handleSwipe(SwipeDirection swipe)
+void ScreenManager::handleSwipe(SwipeDirection swipe, const SwipeGestureStats& stats)
 {
     const ScreenId target = nextScreenForSwipe(current_, swipe);
     if (target != current_) {
+        ESP_LOGI(kTag, "switch %s -> %s by swipe %s dx=%d dy=%d dt=%lu samples=%u",
+                 screenName(current_), screenName(target), swipeName(swipe),
+                 stats.dx, stats.dy, static_cast<unsigned long>(stats.duration_ms),
+                 static_cast<unsigned>(stats.samples));
         switchTo(target);
     }
 }
