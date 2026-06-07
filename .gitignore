@@ -1,7 +1,10 @@
 build/
 build-sim/
+build-fw*/
+managed_components
 managed_components/
 .superpowers/
+.worktrees/
 main/clock_secrets.h
 main/assets/DroidSansFallbackFull.ttf
 sdkconfig.old

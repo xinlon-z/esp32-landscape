@@ -1,35 +1,73 @@
-#include "../main/music_visualizer.cpp"
+#include "app/features/music/util/music_visualizer.cpp"
 
-#include <stdio.h>
+#include <gtest/gtest.h>
 
-int main()
+namespace {
+constexpr uint8_t kBars = 34;
+} // namespace
+
+TEST(MusicVisualizer, HeightStaysInRangeAcrossPhases)
 {
-    constexpr uint8_t kBars = 34;
+    for (uint32_t phase = 0; phase < 5000u; phase += 73u) {
+        for (uint8_t i = 0; i < kBars; ++i) {
+            const uint8_t h_play = musicVisualizerBarHeight(i, kBars, 420, true, phase);
+            const uint8_t h_paused = musicVisualizerBarHeight(i, kBars, 420, false, phase);
+            EXPECT_GE(h_play, 4u);
+            EXPECT_LE(h_play, 30u);
+            EXPECT_GE(h_paused, 4u);
+            EXPECT_LE(h_paused, 30u);
+        }
+    }
+}
+
+TEST(MusicVisualizer, PausedHeightIsPhaseInvariant)
+{
+    // When not playing, the bar height is the static envelope only — must
+    // not vary with phase_ms so paused bars stay still.
+    for (uint8_t i = 0; i < kBars; ++i) {
+        const uint8_t h_a = musicVisualizerBarHeight(i, kBars, 420, false, 0);
+        const uint8_t h_b = musicVisualizerBarHeight(i, kBars, 420, false, 1234);
+        const uint8_t h_c = musicVisualizerBarHeight(i, kBars, 420, false, 60000);
+        EXPECT_EQ(h_a, h_b) << "bar " << static_cast<int>(i);
+        EXPECT_EQ(h_a, h_c) << "bar " << static_cast<int>(i);
+    }
+}
+
+TEST(MusicVisualizer, PlayingVariesAcrossPhases)
+{
+    // The bouncy-peaks animation means at least one bar's height must change
+    // as phase_ms advances. (The exact bar isn't promised — depends on the
+    // per-bar period and target hash.)
+    bool any_change = false;
+    for (uint8_t i = 0; i < kBars && !any_change; ++i) {
+        for (uint32_t phase = 0; phase < 1000u && !any_change; phase += 50u) {
+            const uint8_t h_a = musicVisualizerBarHeight(i, kBars, 420, true, phase);
+            const uint8_t h_b = musicVisualizerBarHeight(i, kBars, 420, true, phase + 50u);
+            if (h_a != h_b) {
+                any_change = true;
+            }
+        }
+    }
+    EXPECT_TRUE(any_change);
+}
+
+TEST(MusicVisualizer, PlayingTallerThanPausedOnAverage)
+{
+    // Bouncy peaks add amplitude on top of the static envelope, so over many
+    // (bar, phase) samples the playing total must exceed the paused total.
     uint32_t playing_sum = 0;
     uint32_t paused_sum = 0;
-
-    for (uint8_t i = 0; i < kBars; ++i) {
-        const uint8_t playing = musicVisualizerBarHeight(i, kBars, 420, true);
-        const uint8_t paused = musicVisualizerBarHeight(i, kBars, 420, false);
-        if (playing < 4 || playing > 30 || paused < 4 || paused > 30) {
-            printf("bar %u out of range: playing=%u paused=%u\n", i, playing, paused);
-            return 1;
+    for (uint32_t phase = 0; phase < 3000u; phase += 53u) {
+        for (uint8_t i = 0; i < kBars; ++i) {
+            playing_sum += musicVisualizerBarHeight(i, kBars, 420, true, phase);
+            paused_sum  += musicVisualizerBarHeight(i, kBars, 420, false, phase);
         }
-        playing_sum += playing;
-        paused_sum += paused;
     }
+    EXPECT_GT(playing_sum, paused_sum);
+}
 
-    if (playing_sum <= paused_sum) {
-        printf("expected playing visualizer to be more energetic: %u <= %u\n",
-               static_cast<unsigned>(playing_sum),
-               static_cast<unsigned>(paused_sum));
-        return 1;
-    }
-
-    if (musicVisualizerBarHeight(0, 0, 0, true) != 0) {
-        printf("expected zero bars to return zero height\n");
-        return 1;
-    }
-
-    return 0;
+TEST(MusicVisualizer, ZeroCountReturnsZero)
+{
+    EXPECT_EQ(musicVisualizerBarHeight(0, 0, 0, true, 100), 0);
+    EXPECT_EQ(musicVisualizerBarHeight(0, 0, 0, false, 0), 0);
 }

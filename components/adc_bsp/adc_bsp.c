@@ -26,29 +26,42 @@ void adc_bsp_init(void)
   	};
   	ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_handle, ADC_CHANNEL_3, &config));
 }
-void adc_get_value(float *value,int *data)
+esp_err_t adc_get_value(float *value,int *data)
 {
-  	int adcdata;
-  	int vol = 0;
-  	esp_err_t err;
-  	err = adc_oneshot_read(adc1_handle,ADC_CHANNEL_3,&adcdata);
-  	if(err == ESP_OK)
-  	{
-    	adc_cali_raw_to_voltage(cali_handle,adcdata,&vol);
-    	*value = 0.001 * vol * 3;
-    	if (data != NULL)
-    	{
-    	  *data = adcdata;
-    	}
-  	}
-  	else
-  	{
-  	  	*value = 0;
-  	  	if (data != NULL)
-  	  	{
-  	  	  	*data = adcdata;
-  	  	}
-  	}
+    if (value == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    int adcdata = 0;
+    int vol = 0;
+    esp_err_t err;
+    err = adc_oneshot_read(adc1_handle,ADC_CHANNEL_3,&adcdata);
+    if(err == ESP_OK)
+    {
+        err = adc_cali_raw_to_voltage(cali_handle,adcdata,&vol);
+        if (err != ESP_OK) {
+            *value = 0;
+            if (data != NULL)
+            {
+                *data = 0;
+            }
+            return err;
+        }
+        *value = 0.001 * vol * 3;
+        if (data != NULL)
+        {
+          *data = adcdata;
+        }
+        return ESP_OK;
+    }
+    else
+    {
+        *value = 0;
+        if (data != NULL)
+        {
+            *data = 0;
+        }
+        return err;
+    }
 }
 /*test demo*/
 void adc_example(void* parmeter)

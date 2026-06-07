@@ -39,6 +39,8 @@
 
 #define EXAMPLE_IMU_ADDR 0x6b
 
+#define EXAMPLE_EXIO_ADDR 0x20
+
 
 #define USER_DISP_ROT_90    1
 #define USER_DISP_ROT_NONO  0
