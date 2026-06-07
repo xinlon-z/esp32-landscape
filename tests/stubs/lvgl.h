@@ -39,7 +39,14 @@ inline uint32_t& lvTickElapsStubValue()
     return value;
 }
 
+inline uint32_t& lvTickGetStubValue()
+{
+    static uint32_t value = 0;
+    return value;
+}
+
 static inline uint32_t lv_tick_elaps(uint32_t) { return lvTickElapsStubValue(); }
+static inline uint32_t lv_tick_get() { return lvTickGetStubValue(); }
 
 // LVGL async / timer / cache stubs. The host harness records these calls so
 // tests can assert on dispatch ordering without actually running an LVGL loop.

@@ -97,3 +97,21 @@ TEST(MusicMqttIngest, StateAndCoverEvents)
 
     CoverService::get().clear();
 }
+
+TEST(MusicMqttIngest, ProgressTimestampUsesLvglTickDomain)
+{
+    EventBus::get().resetForTest();
+
+    xTaskGetTickCountStubValue() = 5000;
+    lvTickGetStubValue() = 1200;
+
+    const char* progress = "1000/1000/4411000";
+    updateState("ssnc/prgr", progress, strlen(progress));
+
+    const MusicState state = MqttService::get().snapshot();
+    EXPECT_EQ(state.last_progress_ms, 1200u)
+        << "progress timestamps are consumed with lv_tick_elaps(), so ingest must store lv_tick_get()";
+
+    xTaskGetTickCountStubValue() = 0;
+    lvTickGetStubValue() = 0;
+}

@@ -6,9 +6,15 @@
 
 typedef void* TaskHandle_t;
 
+inline TickType_t& xTaskGetTickCountStubValue()
+{
+    static TickType_t value = 0;
+    return value;
+}
+
 static inline TickType_t xTaskGetTickCount()
 {
-    return 0;
+    return xTaskGetTickCountStubValue();
 }
 
 static inline void vTaskDelay(TickType_t)

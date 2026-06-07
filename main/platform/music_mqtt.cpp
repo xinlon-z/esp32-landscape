@@ -14,6 +14,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "lvgl.h"
 #include "lwip/netdb.h"
 
 namespace {
@@ -286,9 +287,7 @@ void updateState(const char* field, const char* payload, size_t payload_len)
         return;
     }
 
-    const uint32_t progress_ms = strcmp(field, "ssnc/prgr") == 0
-                                     ? static_cast<uint32_t>(xTaskGetTickCount() * portTICK_PERIOD_MS)
-                                     : 0;
+    const uint32_t progress_ms = strcmp(field, "ssnc/prgr") == 0 ? lv_tick_get() : 0;
     MqttService::get().applyField(field, payload, payload_len, progress_ms);
 
     if (strcmp(field, "title") == 0 || strcmp(field, "artist") == 0 ||
@@ -475,4 +474,3 @@ void MusicMqtt::init()
                                 kCoverTaskCore);
     }
 }
-
