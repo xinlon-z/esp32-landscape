@@ -38,6 +38,10 @@ void MusicView::setDimmed(bool) {}
 BackgroundWidget::BackgroundWidget() {}
 BackgroundWidget::~BackgroundWidget() {}
 
+namespace MusicMqtt {
+void init() {}
+} // namespace MusicMqtt
+
 TEST(MusicPresenterEventBus, TickAndCoverRender)
 {
     resetCounters();

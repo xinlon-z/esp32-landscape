@@ -3,10 +3,11 @@
 #include "platform/power_mgr.cpp"
 #undef private
 
-extern "C" void adc_get_value(float* value, int* data)
+extern "C" esp_err_t adc_get_value(float* value, int* data)
 {
     if (value) *value = 0.0f;
     if (data) *data = 0;
+    return ESP_OK;
 }
 
 namespace ClockNet {

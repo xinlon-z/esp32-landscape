@@ -1,5 +1,8 @@
 #include <gtest/gtest.h>
 
+#include <string.h>
+#include <vector>
+
 // Test-only access shim: opens up the service's private members for this
 // translation unit so tests can inspect internal state. Production code is
 // unaffected — this is a textual hack scoped to this file.
@@ -12,6 +15,19 @@
 #undef protected
 
 namespace {
+struct RegisteredCover {
+    uint32_t cover_id = 0;
+    const lv_color_t* pixels = nullptr;
+    uint16_t w = 0;
+    uint16_t h = 0;
+};
+
+std::vector<RegisteredCover>& registeredCovers()
+{
+    static std::vector<RegisteredCover> covers;
+    return covers;
+}
+
 constexpr uint16_t kCoverW = 32;
 constexpr uint16_t kCoverH = 32;
 constexpr uint16_t kBgW = 64;
@@ -40,6 +56,13 @@ BorrowedCover makeBorrowedCover(uint32_t cover_id,
     cover.status = CoverStatus::Ready;
     cover.image = &img;
     cover.pixels = pixels.data();
+
+    registeredCovers().push_back(RegisteredCover{
+        cover.cover_id,
+        pixels.data(),
+        static_cast<uint16_t>(img.header.w),
+        static_cast<uint16_t>(img.header.h),
+    });
     return cover;
 }
 
@@ -69,12 +92,52 @@ void seedStale(BackgroundBlurService& svc)
 }
 } // namespace
 
+// BackgroundBlurService only needs CoverService's locked pixel-copy surface here;
+// keep this test focused by using a tiny local double instead of the JPEG service.
+CoverService::CoverService() = default;
+
+CoverService& CoverService::get()
+{
+    static CoverService service;
+    return service;
+}
+
+bool CoverService::copyPixels(uint32_t cover_id,
+                              lv_color_t* dst_pixels,
+                              uint32_t dst_pixel_count,
+                              lv_img_dsc_t* out_image)
+{
+    for (const RegisteredCover& cover : registeredCovers()) {
+        if (cover.cover_id != cover_id || !cover.pixels || cover.w == 0 || cover.h == 0) {
+            continue;
+        }
+
+        const uint32_t pixel_count = static_cast<uint32_t>(cover.w) * cover.h;
+        if (pixel_count > dst_pixel_count) {
+            return false;
+        }
+
+        memcpy(dst_pixels, cover.pixels, pixel_count * sizeof(lv_color_t));
+        if (out_image) {
+            *out_image = lv_img_dsc_t{};
+            out_image->header.w = cover.w;
+            out_image->header.h = cover.h;
+            out_image->header.cf = LV_IMG_CF_TRUE_COLOR;
+            out_image->data = reinterpret_cast<const uint8_t*>(dst_pixels);
+            out_image->data_size = pixel_count * sizeof(lv_color_t);
+        }
+        return true;
+    }
+    return false;
+}
+
 class BackgroundBlurServiceTest : public ::testing::Test {
 protected:
     void SetUp() override
     {
         lvglStubState().reset();
         lvglPortStubState().reset();
+        registeredCovers().clear();
     }
 };
 

@@ -24,9 +24,9 @@ struct SwipeGestureStats {
 
 class SwipeGestureDetector {
 public:
-    void press(TouchPoint point, uint32_t tick_ms);
+    void press(TouchPoint point, uint32_t tick_ms = 0);
     void move(TouchPoint point);
-    SwipeDirection release(TouchPoint point, uint32_t tick_ms,
+    SwipeDirection release(TouchPoint point, uint32_t tick_ms = 0,
                            SwipeGestureStats* stats = nullptr);
     void reset();
 
