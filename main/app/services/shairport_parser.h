@@ -2,6 +2,8 @@
 
 #include "../features/music/music_state.h"
 
+#include <errno.h>
+#include <math.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -27,15 +29,23 @@ inline bool payloadTruthy(const char* payload, size_t payload_len)
                                payload[0] == 'y' || payload[0] == 'Y');
 }
 
-inline uint32_t parseFrame(const char*& cursor)
+inline bool parseFrame(const char*& cursor, uint32_t* out)
 {
+    if (!cursor || !out || *cursor == '\0') {
+        return false;
+    }
     char* end = nullptr;
+    errno = 0;
     const unsigned long value = strtoul(cursor, &end, 10);
+    if (end == cursor || errno == ERANGE || value > UINT32_MAX) {
+        return false;
+    }
     cursor = end;
     if (*cursor == '/') {
         ++cursor;
     }
-    return static_cast<uint32_t>(value);
+    *out = static_cast<uint32_t>(value);
+    return true;
 }
 
 inline int clampPercent(int value)
@@ -73,14 +83,25 @@ inline void applyShairportField(MusicState& state, const char* field, const char
     } else if (strcmp(field, "volume") == 0 || strcmp(field, "ssnc/pvol") == 0) {
         char value[24];
         copyPayload(value, sizeof(value), payload, payload_len);
-        const double volume_db = strtod(value, nullptr);
-        state.volume_percent = clampPercent(static_cast<int>(((volume_db + kVolumeRangeDb) * 100.0) / kVolumeRangeDb));
+        char* end = nullptr;
+        const double volume_db = strtod(value, &end);
+        if (end != value && isfinite(volume_db)) {
+            state.volume_percent = clampPercent(static_cast<int>(((volume_db + kVolumeRangeDb) * 100.0) / kVolumeRangeDb));
+        }
     } else if (strcmp(field, "ssnc/prgr") == 0) {
         char value[48];
         copyPayload(value, sizeof(value), payload, payload_len);
         const char* cursor = value;
-        state.progress_start_frame = parseFrame(cursor);
-        state.progress_current_frame = parseFrame(cursor);
-        state.progress_end_frame = parseFrame(cursor);
+        uint32_t start = 0;
+        uint32_t current = 0;
+        uint32_t end = 0;
+        if (parseFrame(cursor, &start) &&
+            parseFrame(cursor, &current) &&
+            parseFrame(cursor, &end) &&
+            start <= current && current <= end) {
+            state.progress_start_frame = start;
+            state.progress_current_frame = current;
+            state.progress_end_frame = end;
+        }
     }
 }

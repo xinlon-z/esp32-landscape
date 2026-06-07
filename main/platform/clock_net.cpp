@@ -1,5 +1,6 @@
 #include "clock_net.h"
 
+#include <atomic>
 #include <string.h>
 #include <sys/time.h>
 #include <time.h>
@@ -35,12 +36,12 @@ constexpr int kMaxRetries = 8;
 
 EventGroupHandle_t s_wifi_event_group = nullptr;
 int s_retry_num = 0;
-volatile bool s_wifi_connected = false;
-volatile bool s_ntp_synced = false;
-volatile bool s_sync_in_progress = false;
-volatile bool s_wifi_initialized = false;
-volatile bool s_wifi_started = false;
-volatile bool s_wifi_sleep_paused = false;
+std::atomic_bool s_wifi_connected{false};
+std::atomic_bool s_ntp_synced{false};
+std::atomic_bool s_sync_in_progress{false};
+std::atomic_bool s_wifi_initialized{false};
+std::atomic_bool s_wifi_started{false};
+std::atomic_bool s_wifi_sleep_paused{false};
 TaskHandle_t s_sync_task = nullptr;
 
 void set_rtc_from_system_time()
@@ -137,7 +138,7 @@ bool try_sync_time(const char *server)
                 continue;
             }
 
-            s_ntp_synced = true;
+            s_ntp_synced.store(true, std::memory_order_relaxed);
             set_rtc_from_system_time();
             ESP_LOGI(kTag, "NTP synced via %s (%s)", server, ip_text);
             synced = true;
@@ -151,18 +152,18 @@ bool try_sync_time(const char *server)
 void wifi_event_handler(void *, esp_event_base_t event_base, int32_t event_id, void *event_data)
 {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
-        s_wifi_started = true;
-        if (!s_wifi_sleep_paused) {
+        s_wifi_started.store(true, std::memory_order_relaxed);
+        if (!s_wifi_sleep_paused.load(std::memory_order_relaxed)) {
             esp_wifi_connect();
         }
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_STOP) {
-        s_wifi_started = false;
-        s_wifi_connected = false;
+        s_wifi_started.store(false, std::memory_order_relaxed);
+        s_wifi_connected.store(false, std::memory_order_relaxed);
         xEventGroupClearBits(s_wifi_event_group, kWifiConnectedBit);
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-        s_wifi_connected = false;
+        s_wifi_connected.store(false, std::memory_order_relaxed);
         xEventGroupClearBits(s_wifi_event_group, kWifiConnectedBit);
-        if (s_wifi_sleep_paused) {
+        if (s_wifi_sleep_paused.load(std::memory_order_relaxed)) {
             ESP_LOGI(kTag, "WiFi disconnected for app sleep");
             return;
         }
@@ -177,7 +178,7 @@ void wifi_event_handler(void *, esp_event_base_t event_base, int32_t event_id, v
         ip_event_got_ip_t *event = static_cast<ip_event_got_ip_t *>(event_data);
         ESP_LOGI(kTag, "WiFi got IP: " IPSTR, IP2STR(&event->ip_info.ip));
         s_retry_num = 0;
-        s_wifi_connected = true;
+        s_wifi_connected.store(true, std::memory_order_relaxed);
         xEventGroupSetBits(s_wifi_event_group, kWifiConnectedBit);
     }
 }
@@ -188,12 +189,12 @@ void sync_time_task(void *)
     tzset();
 
     while (true) {
-        if (s_wifi_sleep_paused) {
-            s_sync_in_progress = false;
+        if (s_wifi_sleep_paused.load(std::memory_order_relaxed)) {
+            s_sync_in_progress.store(false, std::memory_order_relaxed);
             vTaskDelay(pdMS_TO_TICKS(1000));
             continue;
         }
-        if (s_ntp_synced) {
+        if (s_ntp_synced.load(std::memory_order_relaxed)) {
             break;
         }
 
@@ -208,15 +209,15 @@ void sync_time_task(void *)
             continue;
         }
 
-        s_sync_in_progress = true;
+        s_sync_in_progress.store(true, std::memory_order_relaxed);
         for (const char *server : kNtpServers) {
             if (try_sync_time(server)) {
                 break;
             }
         }
-        s_sync_in_progress = false;
+        s_sync_in_progress.store(false, std::memory_order_relaxed);
 
-        if (!s_ntp_synced) {
+        if (!s_ntp_synced.load(std::memory_order_relaxed)) {
             ESP_LOGW(kTag, "NTP sync timed out, retrying later");
             vTaskDelay(pdMS_TO_TICKS(10 * 60 * 1000));
         }
@@ -240,18 +241,18 @@ void start_sync_task_if_needed()
 
 void start_wifi_station()
 {
-    if (!s_wifi_initialized) {
+    if (!s_wifi_initialized.load(std::memory_order_relaxed)) {
         return;
     }
 
     esp_err_t ret = esp_wifi_start();
     if (ret == ESP_OK) {
-        s_wifi_started = true;
+        s_wifi_started.store(true, std::memory_order_relaxed);
         return;
     }
 
     ESP_LOGW(kTag, "WiFi start returned %s", esp_err_to_name(ret));
-    if (s_wifi_started) {
+    if (s_wifi_started.load(std::memory_order_relaxed)) {
         ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_connect());
     }
 }
@@ -284,7 +285,7 @@ void network_task(void *)
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
-    s_wifi_initialized = true;
+    s_wifi_initialized.store(true, std::memory_order_relaxed);
     start_wifi_station();
     ESP_LOGI(kTag, "WiFi start");
 
@@ -305,13 +306,14 @@ void ClockNet::init()
 
 void ClockNet::pauseForSleep()
 {
-    s_wifi_sleep_paused = true;
-    s_sync_in_progress = false;
-    s_wifi_connected = false;
+    s_wifi_sleep_paused.store(true, std::memory_order_relaxed);
+    s_sync_in_progress.store(false, std::memory_order_relaxed);
+    s_wifi_connected.store(false, std::memory_order_relaxed);
     if (s_wifi_event_group != nullptr) {
         xEventGroupClearBits(s_wifi_event_group, kWifiConnectedBit);
     }
-    if (s_wifi_initialized && s_wifi_started) {
+    if (s_wifi_initialized.load(std::memory_order_relaxed) &&
+        s_wifi_started.load(std::memory_order_relaxed)) {
         ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_disconnect());
         ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_stop());
     }
@@ -319,9 +321,9 @@ void ClockNet::pauseForSleep()
 
 void ClockNet::requestSync()
 {
-    s_wifi_sleep_paused = false;
-    s_ntp_synced = false;
-    s_sync_in_progress = false;
+    s_wifi_sleep_paused.store(false, std::memory_order_relaxed);
+    s_ntp_synced.store(false, std::memory_order_relaxed);
+    s_sync_in_progress.store(false, std::memory_order_relaxed);
 
     if (s_wifi_event_group == nullptr) {
         init();
@@ -335,8 +337,8 @@ void ClockNet::requestSync()
 ClockNet::Status ClockNet::getStatus()
 {
     Status status;
-    status.wifi_connected   = s_wifi_connected;
-    status.ntp_synced       = s_ntp_synced;
-    status.sync_in_progress = s_sync_in_progress;
+    status.wifi_connected   = s_wifi_connected.load(std::memory_order_relaxed);
+    status.ntp_synced       = s_ntp_synced.load(std::memory_order_relaxed);
+    status.sync_in_progress = s_sync_in_progress.load(std::memory_order_relaxed);
     return status;
 }

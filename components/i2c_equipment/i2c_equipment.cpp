@@ -85,13 +85,19 @@ static uint32_t hal_callback(SensorCommCustomHal::Operation op, void *param1, vo
 
 bool i2c_dev_Callback(uint8_t addr, uint8_t reg, uint8_t *buf, size_t len, bool writeReg, bool isWrite)
 {
-    uint8_t ret;
+    esp_err_t ret = ESP_FAIL;
     int areg = reg;
     i2c_master_dev_handle_t i2c_dev_handle = NULL;
     if(RTC_PCF85063_ADDR==addr)
     i2c_dev_handle = rtc_dev_handle;
     else if(IMU_QMI8658_ADDR==addr)
     i2c_dev_handle = imu_dev_handle;
+    else
+    return false;
+
+    if(i2c_dev_handle == NULL || (len > 0 && buf == NULL))
+    return false;
+
     if(isWrite) // 写寄存器
     {
         if(writeReg)

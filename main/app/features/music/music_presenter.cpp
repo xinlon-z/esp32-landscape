@@ -14,6 +14,9 @@ constexpr uint32_t kFramesPerSecond = 44100;
 
 uint32_t totalFrames(const MusicState& state)
 {
+    if (state.progress_end_frame <= state.progress_start_frame) {
+        return 0;
+    }
     return state.progress_end_frame - state.progress_start_frame;
 }
 } // namespace
@@ -137,7 +140,10 @@ uint32_t MusicPresenter::elapsedFramesForUi(const MusicState& state) const
         return 0;
     }
 
-    uint32_t elapsed = state.progress_current_frame - state.progress_start_frame;
+    uint32_t elapsed = 0;
+    if (state.progress_current_frame > state.progress_start_frame) {
+        elapsed = state.progress_current_frame - state.progress_start_frame;
+    }
     if (state.playing && state.last_progress_ms != 0) {
         const uint32_t ms = lv_tick_elaps(state.last_progress_ms);
         const uint32_t whole_s = ms / 1000u;

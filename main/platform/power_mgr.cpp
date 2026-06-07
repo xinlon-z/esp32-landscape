@@ -116,8 +116,7 @@ int PowerManager::sampleBattery(float* filtered)
     for (int i = 0; i < 8; ++i) {
         float v   = 0.0f;
         int   raw = 0;
-        adc_get_value(&v, &raw);
-        if (v > 0.1f) {
+        if (adc_get_value(&v, &raw) == ESP_OK && v > 0.1f) {
             vsum += v;
             ++valid;
         }

@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "i2c_bsp.h"
 #include "user_config.h"
@@ -63,10 +64,12 @@ void i2c_master_Init(void)
 
 }
 
-uint8_t i2c_writr_buff(i2c_master_dev_handle_t dev_handle,int reg,uint8_t *buf,uint8_t len)
+esp_err_t i2c_writr_buff(i2c_master_dev_handle_t dev_handle,int reg,const uint8_t *buf,size_t len)
 {
-  uint8_t ret;
+  esp_err_t ret;
   uint8_t *pbuf = NULL;
+  if(dev_handle == NULL || (len > 0 && buf == NULL))
+  return ESP_ERR_INVALID_ARG;
   ret = i2c_master_bus_wait_all_done(user_i2c_port0_handle,i2c_done_pdMS_TICKS);
   if(ret != ESP_OK)
   return ret;
@@ -77,20 +80,21 @@ uint8_t i2c_writr_buff(i2c_master_dev_handle_t dev_handle,int reg,uint8_t *buf,u
   else
   {
     pbuf = (uint8_t*)malloc(len+1);
+    if(pbuf == NULL)
+    return ESP_ERR_NO_MEM;
     pbuf[0] = reg;
-    for(uint8_t i = 0; i<len; i++)
-    {
-      pbuf[i+1] = buf[i];
-    }
+    memcpy(pbuf + 1, buf, len);
     ret = i2c_master_transmit(dev_handle,pbuf,len+1,i2c_data_pdMS_TICKS);
     free(pbuf);
     pbuf = NULL;
   }
   return ret;
 }
-uint8_t i2c_master_write_read_dev(i2c_master_dev_handle_t dev_handle,uint8_t *writeBuf,uint8_t writeLen,uint8_t *readBuf,uint8_t readLen)
+esp_err_t i2c_master_write_read_dev(i2c_master_dev_handle_t dev_handle,const uint8_t *writeBuf,size_t writeLen,uint8_t *readBuf,size_t readLen)
 {
-  uint8_t ret;
+  esp_err_t ret;
+  if(dev_handle == NULL || (writeLen > 0 && writeBuf == NULL) || (readLen > 0 && readBuf == NULL))
+  return ESP_ERR_INVALID_ARG;
   ret = i2c_master_bus_wait_all_done(user_i2c_port0_handle,i2c_done_pdMS_TICKS);
   if(ret != ESP_OK)
   return ret;
@@ -129,10 +133,12 @@ esp_err_t i2c_exio_set_output(uint8_t pin, bool level)
   }
   return i2c_writr_buff(exio_dev_handle, TCA9554_REG_CONFIG, &config, 1);
 }
-uint8_t i2c_read_buff(i2c_master_dev_handle_t dev_handle,int reg,uint8_t *buf,uint8_t len)
+esp_err_t i2c_read_buff(i2c_master_dev_handle_t dev_handle,int reg,uint8_t *buf,size_t len)
 {
-  uint8_t ret;
+  esp_err_t ret;
   uint8_t addr = 0;
+  if(dev_handle == NULL || (len > 0 && buf == NULL))
+  return ESP_ERR_INVALID_ARG;
   ret = i2c_master_bus_wait_all_done(user_i2c_port0_handle,i2c_done_pdMS_TICKS);
   if(ret != ESP_OK)
   return ret;
@@ -144,9 +150,11 @@ uint8_t i2c_read_buff(i2c_master_dev_handle_t dev_handle,int reg,uint8_t *buf,ui
 }
 
 
-esp_err_t i2c_master_touch_write_read(i2c_master_dev_handle_t dev_handle,uint8_t *writeBuf,uint8_t writeLen,uint8_t *readBuf,uint8_t readLen)
+esp_err_t i2c_master_touch_write_read(i2c_master_dev_handle_t dev_handle,const uint8_t *writeBuf,size_t writeLen,uint8_t *readBuf,size_t readLen)
 {
   esp_err_t ret;
+  if(dev_handle == NULL || (writeLen > 0 && writeBuf == NULL) || (readLen > 0 && readBuf == NULL))
+  return ESP_ERR_INVALID_ARG;
   ret = i2c_master_bus_wait_all_done(user_i2c_port1_handle,i2c_done_pdMS_TICKS);
   if(ret != ESP_OK)
   return ret;

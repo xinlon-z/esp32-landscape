@@ -10,6 +10,9 @@ constexpr uint32_t kFramesPerSecond = 44100;
 
 uint32_t totalFrames(const MusicState& state)
 {
+    if (state.progress_end_frame <= state.progress_start_frame) {
+        return 0;
+    }
     return state.progress_end_frame - state.progress_start_frame;
 }
 
