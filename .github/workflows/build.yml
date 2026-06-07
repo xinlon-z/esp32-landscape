@@ -65,55 +65,55 @@ jobs:
                     bootloader.bin partition-table.bin > sha256sums.txt
 
           cat > README.txt << READEOF
-Landscape Clock Firmware ${VERSION}
-===================================
+          Landscape Clock Firmware ${VERSION}
+          ===================================
 
-Target hardware : Waveshare ESP32-S3-Touch-LCD-3.49
-ESP-IDF version : v6.0.1
+          Target hardware : Waveshare ESP32-S3-Touch-LCD-3.49
+          ESP-IDF version : v6.0.1
 
-REQUIREMENTS
-------------
-  Python 3 with esptool:  pip install esptool
-
-
-FLASHING
---------
-
-Full installation or factory reset (recommended for first-time setup):
-  Writes bootloader, partition table, and application in a single pass.
-
-  esptool.py --chip esp32s3 -b 460800 \\
-      --before default-reset --after hard-reset \\
-      write_flash --flash-mode dio --flash-size 16MB --flash-freq 80m \\
-      0x0 landscape_clock-merged.bin
-
-Application update only (preserves NVS partition and Wi-Fi credentials):
-
-  esptool.py --chip esp32s3 -b 460800 \\
-      --before default-reset --after hard-reset \\
-      write_flash 0x10000 landscape_clock.bin
-
-Scripted flash using the included argument file:
-
-  esptool.py --chip esp32s3 -b 460800 \\
-      --before default-reset --after hard-reset \\
-      write_flash @flash_args
+          REQUIREMENTS
+          ------------
+            Python 3 with esptool:  pip install esptool
 
 
-FILES
------
-  landscape_clock-merged.bin   Full image: bootloader + partition table + app
-  landscape_clock.bin          Application partition only
-  bootloader.bin               Second-stage bootloader
-  partition-table.bin          Partition table
-  flash_args                   write_flash arguments (paths relative to this dir)
-  sha256sums.txt               SHA-256 checksums for all binary files
+          FLASHING
+          --------
+
+          Full installation or factory reset (recommended for first-time setup):
+            Writes bootloader, partition table, and application in a single pass.
+
+            esptool.py --chip esp32s3 -b 460800 \\
+                --before default-reset --after hard-reset \\
+                write_flash --flash-mode dio --flash-size 16MB --flash-freq 80m \\
+                0x0 landscape_clock-merged.bin
+
+          Application update only (preserves NVS partition and Wi-Fi credentials):
+
+            esptool.py --chip esp32s3 -b 460800 \\
+                --before default-reset --after hard-reset \\
+                write_flash 0x10000 landscape_clock.bin
+
+          Scripted flash using the included argument file:
+
+            esptool.py --chip esp32s3 -b 460800 \\
+                --before default-reset --after hard-reset \\
+                write_flash @flash_args
 
 
-CHECKSUM VERIFICATION
----------------------
-  sha256sum -c sha256sums.txt
-READEOF
+          FILES
+          -----
+            landscape_clock-merged.bin   Full image: bootloader + partition table + app
+            landscape_clock.bin          Application partition only
+            bootloader.bin               Second-stage bootloader
+            partition-table.bin          Partition table
+            flash_args                   write_flash arguments (paths relative to this dir)
+            sha256sums.txt               SHA-256 checksums for all binary files
+
+
+          CHECKSUM VERIFICATION
+          ---------------------
+            sha256sum -c sha256sums.txt
+          READEOF
 
           python3 -m zipfile -c "../${ZIP}" README.txt sha256sums.txt \
               landscape_clock-merged.bin landscape_clock.bin \
