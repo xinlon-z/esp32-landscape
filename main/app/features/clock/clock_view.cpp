@@ -1,12 +1,13 @@
 #include "clock_view.h"
 
+#include "clock_battery_gauge_model.h"
 #include "widgets/seven_segment_widget.h"
 
 namespace {
 
 constexpr uint32_t kBg     = 0xf4f1e8;
-constexpr uint32_t kInk    = 0x22282b;
-constexpr uint32_t kDimInk = 0x363b3d;
+constexpr uint32_t kInk    = kClockBatteryInk;
+constexpr uint32_t kDimInk = kClockBatteryDimInk;
 constexpr uint32_t kMuted  = 0x6f7772;
 constexpr uint32_t kFaint  = 0xded7ca;
 constexpr uint32_t kAccent = 0x2f705f;
@@ -15,7 +16,7 @@ constexpr int kScreenH          = 172;
 constexpr int kDigitW           = 64;
 constexpr int kDigitH           = 106;
 constexpr int kStroke           = 9;
-constexpr int kBatteryInnerMaxW = 38;
+constexpr int kBatteryInnerW    = 38;
 constexpr int kDigitY           = (kScreenH - kDigitH) / 2;
 constexpr int kColonTopY        = kDigitY + 38;
 constexpr int kColonBottomY     = kDigitY + 71;
@@ -64,16 +65,14 @@ void setObjColor(lv_obj_t* obj, uint32_t color)
 
 void setBatteryGauge(lv_obj_t* fill, lv_obj_t* shell, lv_obj_t* cap, int percent, bool dimmed)
 {
-    const int      fill_w      = kBatteryInnerMaxW * percent / 100;
-    const uint32_t fill_color  = (percent <= 15) ? 0xa24535u : (dimmed ? kDimInk : kInk);
-    const uint32_t shell_color = dimmed ? kDimInk : kInk;
+    const ClockBatteryGaugeState gauge = buildClockBatteryGaugeState(percent, dimmed);
 
     if (fill) {
-        lv_obj_set_width(fill, fill_w);
+        lv_bar_set_value(fill, gauge.value, LV_ANIM_OFF);
+        lv_obj_set_style_bg_color(fill, lv_color_hex(gauge.fill_color), LV_PART_INDICATOR);
     }
-    setObjColor(fill,  fill_color);
-    setObjColor(shell, shell_color);
-    setObjColor(cap,   shell_color);
+    setObjColor(shell, gauge.shell_color);
+    setObjColor(cap, gauge.shell_color);
 }
 
 } // namespace
@@ -230,14 +229,19 @@ void ClockView::create()
     lv_obj_set_style_radius(battery_shell_, 4, 0);
     lv_obj_set_style_pad_all(battery_shell_, 0, 0);
 
-    battery_fill_ = lv_obj_create(battery_shell_);
-    lv_obj_set_size(battery_fill_, 0, 14);
+    battery_fill_ = lv_bar_create(battery_shell_);
+    lv_bar_set_range(battery_fill_, 0, 100);
+    lv_bar_set_value(battery_fill_, 0, LV_ANIM_OFF);
+    lv_obj_set_size(battery_fill_, kBatteryInnerW, 14);
     lv_obj_set_pos(battery_fill_, 2, 2);
     lv_obj_clear_flag(battery_fill_, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_bg_color(battery_fill_, lv_color_hex(kInk), 0);
-    lv_obj_set_style_bg_opa(battery_fill_, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_opa(battery_fill_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(battery_fill_, lv_color_hex(kInk), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(battery_fill_, LV_OPA_COVER, LV_PART_INDICATOR);
     lv_obj_set_style_border_width(battery_fill_, 0, 0);
     lv_obj_set_style_radius(battery_fill_, 2, 0);
+    lv_obj_set_style_radius(battery_fill_, 2, LV_PART_INDICATOR);
     lv_obj_set_style_pad_all(battery_fill_, 0, 0);
 
     battery_cap_ = lv_obj_create(side);

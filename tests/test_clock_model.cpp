@@ -1,4 +1,5 @@
 #include "app/features/clock/clock_model.cpp"
+#include "app/features/clock/clock_battery_gauge_model.h"
 
 #include <gtest/gtest.h>
 
@@ -44,4 +45,25 @@ TEST(ClockModel, BuildDisplayState)
     if (after_reset.percent != 53 || !after_reset.update_label) {
         FAIL() << "battery after reset failed: " << after_reset.percent << " " << after_reset.update_label;
     }
+}
+
+TEST(ClockBatteryGaugeModel, BuildsLvBarState)
+{
+    ClockBatteryGaugeState unknown = buildClockBatteryGaugeState(-1, false);
+    EXPECT_EQ(unknown.value, 0);
+    EXPECT_EQ(unknown.fill_color, kClockBatteryInk);
+    EXPECT_EQ(unknown.shell_color, kClockBatteryInk);
+
+    ClockBatteryGaugeState low = buildClockBatteryGaugeState(15, false);
+    EXPECT_EQ(low.value, 15);
+    EXPECT_EQ(low.fill_color, kClockBatteryLow);
+    EXPECT_EQ(low.shell_color, kClockBatteryInk);
+
+    ClockBatteryGaugeState dimmed = buildClockBatteryGaugeState(56, true);
+    EXPECT_EQ(dimmed.value, 56);
+    EXPECT_EQ(dimmed.fill_color, kClockBatteryDimInk);
+    EXPECT_EQ(dimmed.shell_color, kClockBatteryDimInk);
+
+    ClockBatteryGaugeState clamped = buildClockBatteryGaugeState(125, false);
+    EXPECT_EQ(clamped.value, 100);
 }
