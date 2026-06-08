@@ -62,12 +62,50 @@ TEST(ScreenNav, SwipeTimingAndEdgeRules)
         << "fast right-edge left swipe should remain accepted";
 
     detector.press({250, 90}, 3000);
-    EXPECT_EQ(detector.release({380, 92}, 3400, &stats), SwipeDirection::None)
-        << "center gestures need stricter timing than edge gestures";
+    EXPECT_EQ(detector.release({380, 92}, 3700, &stats), SwipeDirection::None)
+        << "slow center drift should still be rejected";
 
     detector.press({250, 90}, 4000);
     EXPECT_EQ(detector.release({480, 92}, 4160, &stats), SwipeDirection::Right)
         << "fast deliberate center swipe should still work";
+}
+
+TEST(ScreenNav, DeliberateHumanSpeedSwipesAreAccepted)
+{
+    SwipeGestureDetector detector;
+    SwipeGestureStats stats{};
+
+    detector.press({28, 90}, 1000);
+    detector.move({88, 91});
+    EXPECT_EQ(detector.release({154, 92}, 1500, &stats), SwipeDirection::Right)
+        << "edge swipe at normal finger speed should navigate";
+    EXPECT_TRUE(stats.edge_start);
+
+    detector.press({28, 90}, 3000);
+    detector.move({62, 91});
+    EXPECT_EQ(detector.release({96, 92}, 3500, &stats), SwipeDirection::Right)
+        << "short edge swipe should be sensitive enough for a narrow screen";
+    EXPECT_TRUE(stats.edge_start);
+
+    detector.press({250, 90}, 2000);
+    detector.move({318, 91});
+    EXPECT_EQ(detector.release({390, 92}, 2440, &stats), SwipeDirection::Right)
+        << "center swipe should not require a flick-speed gesture";
+    EXPECT_FALSE(stats.edge_start);
+}
+
+TEST(ScreenNav, ClassifyDuringDragDoesNotResetDetector)
+{
+    SwipeGestureDetector detector;
+    SwipeGestureStats stats{};
+
+    detector.press({28, 90}, 1000);
+    detector.move({62, 91});
+
+    EXPECT_EQ(detector.classify({96, 92}, 1500, &stats), SwipeDirection::Right);
+    EXPECT_TRUE(stats.edge_start);
+    EXPECT_EQ(detector.release({110, 92}, 1540, &stats), SwipeDirection::Right)
+        << "live classification must not consume the release fallback";
 }
 
 TEST(ScreenNav, DragProgressReportsDirectionAndClamps)

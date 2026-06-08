@@ -35,6 +35,8 @@ public:
     void press(TouchPoint point, uint32_t tick_ms = 0);
     void move(TouchPoint point);
     bool progress(SwipeGestureProgress* progress) const;
+    SwipeDirection classify(TouchPoint point, uint32_t tick_ms = 0,
+                            SwipeGestureStats* stats = nullptr) const;
     SwipeDirection release(TouchPoint point, uint32_t tick_ms = 0,
                            SwipeGestureStats* stats = nullptr);
     void reset();

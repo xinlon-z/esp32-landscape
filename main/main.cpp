@@ -29,6 +29,9 @@ extern "C" void app_main(void)
     lv_indev_drv_init(&indev);
     indev.type    = LV_INDEV_TYPE_POINTER;
     indev.read_cb = TouchDriver::readCb;
+    // Use LVGL's built-in gesture recognizer, tuned near our edge/center guards.
+    indev.gesture_limit = 72;
+    indev.gesture_min_velocity = LV_INDEV_DEF_GESTURE_MIN_VELOCITY;
     lv_indev_drv_register(&indev);
 
     if (LvglPort::Guard g; g) {

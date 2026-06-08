@@ -3,14 +3,17 @@
 #include "../core/event/event_bus.h"
 
 namespace {
-constexpr int kMinSwipeX = 120;
+constexpr int kEdgeMinSwipeX = 64;
+constexpr int kCenterMinSwipeX = 80;
+constexpr int kDistanceOnlyMinSwipeX = 120;
 constexpr int kMaxSwipeY = 54;
 constexpr int kScreenW = 640;
 constexpr int kEdgeStartPx = 96;
-constexpr uint32_t kEdgeMaxDurationMs = 520;
-constexpr uint32_t kCenterMaxDurationMs = 360;
-constexpr uint32_t kEdgeMinSpeedPxPerSec = 650;
-constexpr uint32_t kCenterMinSpeedPxPerSec = 1100;
+constexpr uint32_t kMaxDurationMs = 900;
+constexpr uint32_t kEdgeMinSpeedPxPerSec = 120;
+constexpr uint32_t kCenterMinSpeedPxPerSec = 140;
+constexpr uint32_t kSlowDriftDurationMs = 600;
+constexpr int kSlowDriftDistancePx = 160;
 
 int absInt(int v)
 {
@@ -30,7 +33,8 @@ bool edgeStartForDirection(TouchPoint start, int dx)
 
 uint16_t swipeProgressPerMille(int dx)
 {
-    const int progress = absInt(dx) * 1000 / kMinSwipeX;
+    const int min_distance = kEdgeMinSwipeX;
+    const int progress = absInt(dx) * 1000 / min_distance;
     return progress >= 1000 ? 1000 : static_cast<uint16_t>(progress);
 }
 } // namespace
@@ -90,28 +94,50 @@ SwipeDirection SwipeGestureDetector::release(TouchPoint point, uint32_t tick_ms,
     }
 
     move(point);
+    const SwipeDirection direction = classify(point, tick_ms, stats);
     pressed_ = false;
+    return direction;
+}
+
+SwipeDirection SwipeGestureDetector::classify(TouchPoint point, uint32_t tick_ms,
+                                              SwipeGestureStats* stats) const
+{
+    if (!pressed_) {
+        return SwipeDirection::None;
+    }
+
     const uint32_t duration = tick_ms - start_tick_ms_;
     const int dx = point.x - start_.x;
     const int dy = point.y - start_.y;
-    const int vertical_travel = max_y_ - min_y_;
+    int16_t min_y = min_y_;
+    int16_t max_y = max_y_;
+    if (point.y < min_y) {
+        min_y = point.y;
+    }
+    if (point.y > max_y) {
+        max_y = point.y;
+    }
+    const int vertical_travel = max_y - min_y;
     const bool edge_start = edgeStartForDirection(start_, dx);
+    const int abs_dx = absInt(dx);
+    const int min_swipe_x = edge_start ? kEdgeMinSwipeX : kCenterMinSwipeX;
 
     if (stats) {
         *stats = SwipeGestureStats{dx, dy, duration, samples_, edge_start};
     }
 
-    if (absInt(dx) < kMinSwipeX ||
+    if (abs_dx < min_swipe_x ||
         absInt(dy) > kMaxSwipeY ||
         vertical_travel > kMaxSwipeY) {
         return SwipeDirection::None;
     }
 
     if (duration > 0) {
-        const uint32_t max_duration = edge_start ? kEdgeMaxDurationMs : kCenterMaxDurationMs;
         const uint32_t min_speed = edge_start ? kEdgeMinSpeedPxPerSec : kCenterMinSpeedPxPerSec;
-        const uint32_t speed = static_cast<uint32_t>(absInt(dx)) * 1000U / duration;
-        if (duration > max_duration || speed < min_speed) {
+        const uint32_t speed = static_cast<uint32_t>(abs_dx) * 1000U / duration;
+        if (duration > kMaxDurationMs ||
+            speed < min_speed ||
+            (duration > kSlowDriftDurationMs && abs_dx < kSlowDriftDistancePx)) {
             return SwipeDirection::None;
         }
     }
@@ -134,7 +160,7 @@ SwipeDirection detectSwipe(TouchPoint start, TouchPoint end)
 {
     const int dx = end.x - start.x;
     const int dy = end.y - start.y;
-    if (absInt(dx) < kMinSwipeX || absInt(dy) > kMaxSwipeY) {
+    if (absInt(dx) < kDistanceOnlyMinSwipeX || absInt(dy) > kMaxSwipeY) {
         return SwipeDirection::None;
     }
     return dx < 0 ? SwipeDirection::Left : SwipeDirection::Right;

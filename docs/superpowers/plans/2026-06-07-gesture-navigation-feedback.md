@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Reject slow ghost-touch drift while adding lightweight Android-style hybrid swipe feedback for screen navigation.
+**Goal:** Reject slow ghost-touch drift while adding lightweight Android-style edge pill swipe feedback for screen navigation.
 
-**Architecture:** `SwipeGestureDetector` remains the single source of truth for gesture classification and stats. `ScreenManager` owns a small LVGL overlay that follows drag progress and plays short accept/reject animations without changing Clock or Music views.
+**Architecture:** LVGL's built-in `LV_EVENT_GESTURE` provides the mature direction trigger. `SwipeGestureDetector` remains the local guard for stats, edge/center thresholds, and slow-drift rejection. `ScreenManager` owns a small LVGL overlay that follows drag progress without moving Clock or Music view roots.
 
 **Tech Stack:** ESP-IDF v6.0.1, LVGL 8.4, C++17 host tests with GoogleTest.
 
@@ -13,10 +13,10 @@
 ## File Structure
 
 - Modify `main/app/screens/gesture_manager.h`: add edge-start parameters and progress helpers to the gesture API.
-- Modify `main/app/screens/gesture_manager.cpp`: implement edge/center timing gates, speed filtering, and progress calculation.
+- Modify `main/app/screens/gesture_manager.cpp`: implement edge/center touch-slop gates, slow-drift filtering, live classification, and progress calculation.
 - Modify `tests/test_screen_nav.cpp`: add red/green coverage for the production false gesture, fast edge swipe, stricter center swipe, and progress helper.
 - Modify `main/app/screens/screen_manager.h`: add overlay object pointers and gesture feedback helper methods.
-- Modify `main/app/screens/screen_manager.cpp`: create/update/reset the Hybrid overlay and nudge the active screen root during drag.
+- Modify `main/app/screens/screen_manager.cpp`: create/update/reset the edge pill overlay during drag and handle `LV_EVENT_GESTURE`.
 - Modify `tests/stubs/lvgl.h`: add only the LVGL stubs needed by `ScreenManager` if host tests require them.
 
 ---
@@ -86,12 +86,15 @@ struct SwipeGestureStats {
 Update `gesture_manager.cpp` constants and `release()`:
 
 ```cpp
+constexpr int kEdgeMinSwipeX = 64;
+constexpr int kCenterMinSwipeX = 80;
 constexpr int kScreenW = 640;
 constexpr int kEdgeStartPx = 96;
-constexpr uint32_t kEdgeMaxDurationMs = 520;
-constexpr uint32_t kCenterMaxDurationMs = 360;
-constexpr uint32_t kEdgeMinSpeedPxPerSec = 650;
-constexpr uint32_t kCenterMinSpeedPxPerSec = 1100;
+constexpr uint32_t kMaxDurationMs = 900;
+constexpr uint32_t kEdgeMinSpeedPxPerSec = 120;
+constexpr uint32_t kCenterMinSpeedPxPerSec = 140;
+constexpr uint32_t kSlowDriftDurationMs = 600;
+constexpr int kSlowDriftDistancePx = 160;
 
 bool edgeStartForDirection(TouchPoint start, int dx)
 {
@@ -105,7 +108,7 @@ bool edgeStartForDirection(TouchPoint start, int dx)
 }
 ```
 
-Then reject gestures whose duration exceeds the edge/center max or whose `abs(dx) * 1000 / duration` is below the corresponding min speed. Treat `duration == 0` as a fast deliberate gesture for test compatibility.
+Then reject gestures that fail the edge/center distance gates, exceed max duration, fall below the corresponding min speed, or match the slow-small drift guard. Treat `duration == 0` as a fast deliberate gesture for test compatibility.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -194,7 +197,7 @@ Expected: pass.
 
 ---
 
-### Task 3: Hybrid LVGL Feedback Overlay
+### Task 3: Edge Pill LVGL Feedback Overlay
 
 **Files:**
 - Modify: `main/app/screens/screen_manager.h`
@@ -216,7 +219,6 @@ Add helper declarations:
 ```cpp
 void ensureGestureOverlay();
 void updateGestureFeedback(const SwipeGestureProgress& progress);
-void settleGestureFeedback(bool accepted, SwipeDirection direction);
 void clearGestureFeedback();
 ```
 
@@ -227,9 +229,8 @@ In `screen_manager.cpp`, create a transparent full-screen overlay on `lv_scr_act
 - one rounded pill object at the active edge
 - one label arrow using `LV_SYMBOL_LEFT` or `LV_SYMBOL_RIGHT`
 - opacity controlled by drag progress
-- current root x shifted up to 18 px in drag direction
 
-Use `lv_anim_t` with 120-140 ms duration to return the pill and root to rest.
+Do not move `lv_scr_act()` or schedule release animations. Keep feedback to direct overlay opacity/position updates while dragging.
 
 - [ ] **Step 3: Wire to gesture events**
 
@@ -246,7 +247,7 @@ In `onGestureEvent()`:
     SwipeGestureStats stats{};
     const SwipeDirection swipe =
         manager->swipe_detector_.release(currentTouchPoint(), tick, &stats);
-    manager->settleGestureFeedback(swipe != SwipeDirection::None, swipe);
+    manager->clearGestureFeedback();
     manager->handleSwipe(swipe, stats);
 }
 ```
