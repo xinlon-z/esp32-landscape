@@ -2,19 +2,12 @@
 
 #include <stdint.h>
 
+#include "app/screens/gesture_feedback_model.h"
 #include "esp_log.h"
 
 namespace {
 
 constexpr const char* kTag = "screen_mgr";
-constexpr int kScreenW = 640;
-constexpr int kScreenH = 172;
-constexpr int kGesturePillW = 10;
-constexpr int kGesturePillH = 58;
-constexpr int kGesturePillY = 57;
-constexpr int kGestureArrowW = 28;
-constexpr int kGestureArrowH = 32;
-constexpr int kGestureArrowY = 70;
 
 void enableTouchEvents(lv_obj_t* obj, bool bubble_to_parent)
 {
@@ -222,7 +215,7 @@ void ScreenManager::ensureGestureOverlay()
 
     gesture_screen_root_ = root;
     gesture_overlay_ = lv_obj_create(root);
-    lv_obj_set_size(gesture_overlay_, kScreenW, kScreenH);
+    lv_obj_set_size(gesture_overlay_, kGestureCueScreenW, kGestureCueScreenH);
     lv_obj_set_pos(gesture_overlay_, 0, 0);
     clearObjStyle(gesture_overlay_);
     lv_obj_clear_flag(gesture_overlay_, LV_OBJ_FLAG_CLICKABLE);
@@ -230,23 +223,33 @@ void ScreenManager::ensureGestureOverlay()
     lv_obj_add_flag(gesture_overlay_, LV_OBJ_FLAG_HIDDEN);
 
     gesture_pill_ = lv_obj_create(gesture_overlay_);
-    lv_obj_set_size(gesture_pill_, kGesturePillW, kGesturePillH);
-    lv_obj_set_pos(gesture_pill_, 8, kGesturePillY);
+    lv_obj_set_size(gesture_pill_, kGestureCueHandleW, kGestureCueHandleH);
+    lv_obj_set_pos(gesture_pill_, kGestureCueHandleX,
+                   (kGestureCueScreenH - kGestureCueHandleH) / 2);
     clearObjStyle(gesture_pill_);
     lv_obj_clear_flag(gesture_pill_, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_style_radius(gesture_pill_, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_color(gesture_pill_, lv_color_hex(0xffffff), 0);
     lv_obj_set_style_bg_opa(gesture_pill_, LV_OPA_TRANSP, 0);
 
-    gesture_arrow_ = lv_label_create(gesture_overlay_);
-    lv_obj_set_size(gesture_arrow_, kGestureArrowW, kGestureArrowH);
-    lv_obj_set_pos(gesture_arrow_, 24, kGestureArrowY);
+    gesture_arrow_slot_ = lv_obj_create(gesture_overlay_);
+    lv_obj_set_size(gesture_arrow_slot_, kGestureCueArrowSlotW, kGestureCueArrowSlotH);
+    lv_obj_set_pos(gesture_arrow_slot_, kGestureCueArrowSlotX,
+                   (kGestureCueScreenH - kGestureCueArrowSlotH) / 2);
+    clearObjStyle(gesture_arrow_slot_);
+    lv_obj_clear_flag(gesture_arrow_slot_, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_radius(gesture_arrow_slot_, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(gesture_arrow_slot_, lv_color_hex(0xffffff), 0);
+    lv_obj_set_style_bg_opa(gesture_arrow_slot_, LV_OPA_TRANSP, 0);
+
+    gesture_arrow_ = lv_label_create(gesture_arrow_slot_);
     clearObjStyle(gesture_arrow_);
     lv_obj_clear_flag(gesture_arrow_, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_style_text_color(gesture_arrow_, lv_color_hex(0xffffff), 0);
     lv_obj_set_style_text_opa(gesture_arrow_, LV_OPA_TRANSP, 0);
     lv_obj_set_style_text_align(gesture_arrow_, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_text(gesture_arrow_, LV_SYMBOL_RIGHT);
+    lv_obj_center(gesture_arrow_);
 
     lv_obj_move_foreground(gesture_overlay_);
 }
@@ -258,25 +261,31 @@ void ScreenManager::updateGestureFeedback(const SwipeGestureProgress& progress)
         return;
     }
 
-    ensureGestureOverlay();
-    if (!gesture_overlay_ || !gesture_pill_ || !gesture_arrow_ || !gesture_screen_root_) {
+    const GestureCueLayout layout = buildGestureCueLayout(progress);
+    if (!layout.visible) {
+        clearGestureFeedback();
         return;
     }
 
-    const bool swipe_right = progress.direction == SwipeDirection::Right;
-    const int edge_offset = progress.edge_start ? 8 : 18;
-    const int pill_x = swipe_right ? edge_offset : kScreenW - edge_offset - kGesturePillW;
-    const int arrow_x = swipe_right ? pill_x + 16 : pill_x - kGestureArrowW - 10;
-    const lv_opa_t feedback_opa = static_cast<lv_opa_t>(
-        36 + (static_cast<int>(progress.per_mille) * 168 / 1000));
+    ensureGestureOverlay();
+    if (!gesture_overlay_ || !gesture_pill_ || !gesture_arrow_slot_ || !gesture_arrow_ ||
+        !gesture_screen_root_) {
+        return;
+    }
 
     lv_obj_clear_flag(gesture_overlay_, LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_foreground(gesture_overlay_);
-    lv_obj_set_pos(gesture_pill_, pill_x, kGesturePillY);
-    lv_obj_set_pos(gesture_arrow_, arrow_x, kGestureArrowY);
-    lv_label_set_text(gesture_arrow_, swipe_right ? LV_SYMBOL_RIGHT : LV_SYMBOL_LEFT);
-    lv_obj_set_style_bg_opa(gesture_pill_, feedback_opa, 0);
-    lv_obj_set_style_text_opa(gesture_arrow_, feedback_opa, 0);
+
+    lv_obj_set_pos(gesture_pill_, layout.handle_x, layout.handle_y);
+    lv_obj_set_size(gesture_pill_, layout.handle_w, layout.handle_h);
+    lv_obj_set_style_bg_opa(gesture_pill_, static_cast<lv_opa_t>(layout.handle_opa), 0);
+
+    lv_obj_set_pos(gesture_arrow_slot_, layout.arrow_slot_x, layout.arrow_slot_y);
+    lv_obj_set_size(gesture_arrow_slot_, layout.arrow_slot_w, layout.arrow_slot_h);
+
+    lv_label_set_text(gesture_arrow_, layout.swipe_right ? LV_SYMBOL_RIGHT : LV_SYMBOL_LEFT);
+    lv_obj_center(gesture_arrow_);
+    lv_obj_set_style_text_opa(gesture_arrow_, static_cast<lv_opa_t>(layout.arrow_opa), 0);
 }
 
 void ScreenManager::clearGestureFeedback()
@@ -296,6 +305,7 @@ void ScreenManager::clearGestureOverlayPointers()
 {
     gesture_overlay_ = nullptr;
     gesture_pill_ = nullptr;
+    gesture_arrow_slot_ = nullptr;
     gesture_arrow_ = nullptr;
     gesture_screen_root_ = nullptr;
 }

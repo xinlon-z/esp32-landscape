@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "app/screens/gesture_feedback_model.h"
 #include "app/screens/gesture_manager.cpp"
 #include "app/core/event/event_bus.cpp"
 
@@ -126,4 +127,48 @@ TEST(ScreenNav, DragProgressReportsDirectionAndClamps)
 
     detector.reset();
     EXPECT_FALSE(detector.progress(&progress));
+}
+
+TEST(ScreenNav, HandleArrowCueLayoutKeepsArrowCenteredWithoutBackground)
+{
+    SwipeGestureProgress right{};
+    right.direction = SwipeDirection::Right;
+    right.per_mille = 500;
+    right.edge_start = true;
+
+    const GestureCueLayout right_layout = buildGestureCueLayout(right);
+    EXPECT_TRUE(right_layout.visible);
+    EXPECT_EQ(right_layout.rail_x, 0);
+    EXPECT_EQ(right_layout.rail_w, kGestureCueW);
+    EXPECT_EQ(right_layout.rail_opa, 0u) << "edge background must stay hidden on device";
+    EXPECT_EQ(right_layout.slot_opa, 0u) << "arrow slot background must stay hidden on device";
+    EXPECT_EQ(right_layout.slot_border_opa, 0u) << "arrow slot border must stay hidden on device";
+    EXPECT_EQ(right_layout.arrow_slot_y * 2 + right_layout.arrow_slot_h, kGestureCueScreenH)
+        << "arrow slot must be vertically centered";
+    EXPECT_EQ(right_layout.handle_y * 2 + right_layout.handle_h, kGestureCueScreenH)
+        << "handle must be vertically centered";
+    EXPECT_GT(right_layout.arrow_slot_x, right_layout.handle_x)
+        << "right swipe arrow cue should sit inward from the left handle";
+
+    SwipeGestureProgress left = right;
+    left.direction = SwipeDirection::Left;
+    left.per_mille = 1000;
+
+    const GestureCueLayout left_layout = buildGestureCueLayout(left);
+    EXPECT_TRUE(left_layout.visible);
+    EXPECT_EQ(left_layout.rail_x, kGestureCueScreenW - kGestureCueW);
+    EXPECT_EQ(left_layout.rail_opa, 0u) << "mirrored edge background must stay hidden";
+    EXPECT_EQ(left_layout.slot_opa, 0u) << "mirrored arrow slot background must stay hidden";
+    EXPECT_EQ(left_layout.slot_border_opa, 0u) << "mirrored arrow slot border must stay hidden";
+    EXPECT_EQ(left_layout.arrow_slot_y * 2 + left_layout.arrow_slot_h, kGestureCueScreenH)
+        << "mirrored arrow slot must stay vertically centered";
+    EXPECT_LT(left_layout.arrow_slot_x, left_layout.handle_x)
+        << "left swipe arrow cue should sit inward from the right handle";
+    EXPECT_GT(left_layout.arrow_opa, right_layout.arrow_opa)
+        << "cue should grow more visible as drag progress increases";
+
+    SwipeGestureProgress none{};
+    none.direction = SwipeDirection::None;
+    none.per_mille = 500;
+    EXPECT_FALSE(buildGestureCueLayout(none).visible);
 }

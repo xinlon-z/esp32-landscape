@@ -33,6 +33,7 @@ private:
     lv_obj_t* gesture_root_ = nullptr;
     lv_obj_t* gesture_overlay_ = nullptr;
     lv_obj_t* gesture_pill_ = nullptr;
+    lv_obj_t* gesture_arrow_slot_ = nullptr;
     lv_obj_t* gesture_arrow_ = nullptr;
     lv_obj_t* gesture_screen_root_ = nullptr;
     lv_timer_t* tick_timer_ = nullptr;
