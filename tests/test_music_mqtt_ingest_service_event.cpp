@@ -18,7 +18,18 @@ TEST(MusicMqttIngest, MetadataAndCoverUseSeparateSubscriptions)
     EXPECT_EQ(kMetadataStream.kind, StreamKind::Metadata);
     EXPECT_EQ(kCoverStream.kind, StreamKind::Cover);
 
+    constexpr const char* kExpectedMetadataTopics[] = {
+        "shairport/livingroom/title",
+        "shairport/livingroom/artist",
+        "shairport/livingroom/album",
+        "shairport/livingroom/playing",
+        "shairport/livingroom/ssnc/prgr",
+    };
+    ASSERT_EQ(kMetadataStream.topic_count,
+              sizeof(kExpectedMetadataTopics) / sizeof(kExpectedMetadataTopics[0]))
+        << "metadata stream should only subscribe to fields consumed by the music UI";
     for (size_t i = 0; i < kMetadataStream.topic_count; ++i) {
+        EXPECT_STREQ(kMetadataStream.topics[i], kExpectedMetadataTopics[i]);
         EXPECT_TRUE(strstr(kMetadataStream.topics[i], "/cover") == nullptr)
             << "metadata stream must not receive large cover payloads";
         EXPECT_TRUE(strchr(kMetadataStream.topics[i], '#') == nullptr)
@@ -114,4 +125,24 @@ TEST(MusicMqttIngest, ProgressTimestampUsesLvglTickDomain)
 
     xTaskGetTickCountStubValue() = 0;
     lvTickGetStubValue() = 0;
+}
+
+TEST(MusicMqttIngest, KeepalivePingsEvenWhenInboundPacketsKeepArriving)
+{
+    MqttKeepalive keepalive{};
+    noteClientTx(&keepalive, 0);
+
+    EXPECT_FALSE(keepalivePingDue(keepalive, kPingIntervalMs - 1))
+        << "client should not ping before the proactive interval";
+    EXPECT_TRUE(keepalivePingDue(keepalive, kPingIntervalMs))
+        << "client must ping even if inbound packets prevented recv timeout";
+
+    notePingSent(&keepalive, kPingIntervalMs);
+    EXPECT_FALSE(keepalivePingDue(keepalive, kPingIntervalMs + 1))
+        << "client must not spam ping while waiting for PINGRESP";
+
+    notePingResp(&keepalive);
+    EXPECT_FALSE(keepalivePingDue(keepalive, kPingIntervalMs + 1000));
+    EXPECT_TRUE(keepalivePingDue(keepalive, kPingIntervalMs * 2))
+        << "PINGRESP should reset the next proactive interval";
 }

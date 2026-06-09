@@ -27,17 +27,15 @@ constexpr const char* kMetadataTopics[] = {
     "shairport/livingroom/title",
     "shairport/livingroom/artist",
     "shairport/livingroom/album",
-    "shairport/livingroom/genre",
-    "shairport/livingroom/active",
     "shairport/livingroom/playing",
-    "shairport/livingroom/volume",
-    "shairport/livingroom/ssnc/pvol",
     "shairport/livingroom/ssnc/prgr",
 };
 constexpr const char* kCoverTopics[] = {
     "shairport/livingroom/cover",
 };
-constexpr int kSocketTimeoutSeconds = 20;
+constexpr int kSocketTimeoutSeconds = 5;
+constexpr uint32_t kPingIntervalMs = 25000;
+constexpr uint32_t kPingResponseTimeoutMs = 30000;
 constexpr int kReconnectDelayMs = 5000;
 constexpr int kMetadataTaskStackBytes = 6144;
 constexpr int kCoverTaskStackBytes = 6144;
@@ -59,6 +57,23 @@ struct StreamConfig {
     const char* const* topics;
     size_t topic_count;
     StreamKind kind;
+};
+
+struct MqttKeepalive {
+    uint32_t last_tx_ms = 0;
+    uint32_t ping_sent_ms = 0;
+    bool ping_outstanding = false;
+};
+
+enum class ReadByteStatus : uint8_t {
+    Byte,
+    Timeout,
+    Closed,
+};
+
+struct ReadByteResult {
+    ReadByteStatus status = ReadByteStatus::Closed;
+    uint8_t byte = 0;
 };
 
 constexpr StreamConfig kMetadataStream = {
@@ -93,6 +108,64 @@ bool writeAll(int sock, const uint8_t* data, size_t len)
     return true;
 }
 
+uint32_t mqttNowMs()
+{
+    return static_cast<uint32_t>(xTaskGetTickCount()) * portTICK_PERIOD_MS;
+}
+
+bool elapsedAtLeast(uint32_t now_ms, uint32_t then_ms, uint32_t interval_ms)
+{
+    return static_cast<uint32_t>(now_ms - then_ms) >= interval_ms;
+}
+
+void noteClientTx(MqttKeepalive* keepalive, uint32_t now_ms)
+{
+    if (!keepalive) {
+        return;
+    }
+    keepalive->last_tx_ms = now_ms;
+}
+
+void notePingSent(MqttKeepalive* keepalive, uint32_t now_ms)
+{
+    if (!keepalive) {
+        return;
+    }
+    keepalive->last_tx_ms = now_ms;
+    keepalive->ping_sent_ms = now_ms;
+    keepalive->ping_outstanding = true;
+}
+
+void notePingResp(MqttKeepalive* keepalive)
+{
+    if (!keepalive) {
+        return;
+    }
+    keepalive->ping_outstanding = false;
+}
+
+bool keepalivePingDue(const MqttKeepalive& keepalive, uint32_t now_ms)
+{
+    return !keepalive.ping_outstanding &&
+           elapsedAtLeast(now_ms, keepalive.last_tx_ms, kPingIntervalMs);
+}
+
+bool keepaliveResponseExpired(const MqttKeepalive& keepalive, uint32_t now_ms)
+{
+    return keepalive.ping_outstanding &&
+           elapsedAtLeast(now_ms, keepalive.ping_sent_ms, kPingResponseTimeoutMs);
+}
+
+bool sendPingReq(int sock, MqttKeepalive* keepalive)
+{
+    const uint8_t ping[] = {0xc0, 0x00};
+    if (!writeAll(sock, ping, sizeof(ping))) {
+        return false;
+    }
+    notePingSent(keepalive, mqttNowMs());
+    return true;
+}
+
 bool readExact(int sock, uint8_t* data, size_t len)
 {
     while (len > 0) {
@@ -106,14 +179,21 @@ bool readExact(int sock, uint8_t* data, size_t len)
     return true;
 }
 
-int readByte(int sock)
+ReadByteResult readByte(int sock)
 {
     uint8_t byte = 0;
+    errno = 0;
     const ssize_t got = recv(sock, &byte, 1, 0);
     if (got == 1) {
-        return byte;
+        return ReadByteResult{ReadByteStatus::Byte, byte};
     }
-    return -1;
+    if (got == 0) {
+        return ReadByteResult{ReadByteStatus::Closed, 0};
+    }
+    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        return ReadByteResult{ReadByteStatus::Timeout, 0};
+    }
+    return ReadByteResult{ReadByteStatus::Closed, 0};
 }
 
 size_t appendString(uint8_t* packet, size_t pos, const char* text)
@@ -144,10 +224,11 @@ bool readRemainingLength(int sock, int* remaining)
     int value = 0;
 
     for (int i = 0; i < 4; ++i) {
-        const int encoded = readByte(sock);
-        if (encoded < 0) {
+        const ReadByteResult read = readByte(sock);
+        if (read.status != ReadByteStatus::Byte) {
             return false;
         }
+        const int encoded = read.byte;
         value += (encoded & 127) * multiplier;
         if ((encoded & 128) == 0) {
             *remaining = value;
@@ -399,12 +480,24 @@ bool handlePublish(int sock, uint8_t fixed_header, int remaining, StreamKind kin
     return drainBytes(sock, remaining);
 }
 
-bool mqttLoop(int sock, StreamKind kind)
+bool mqttLoop(int sock, StreamKind kind, MqttKeepalive* keepalive)
 {
-    const int byte = readByte(sock);
-    if (byte < 0) {
-        const uint8_t ping[] = {0xc0, 0x00};
-        return writeAll(sock, ping, sizeof(ping));
+    const uint32_t now_ms = mqttNowMs();
+    if (keepaliveResponseExpired(*keepalive, now_ms)) {
+        ESP_LOGW(kTag, "PINGRESP timeout");
+        return false;
+    }
+    if (keepalivePingDue(*keepalive, now_ms) && !sendPingReq(sock, keepalive)) {
+        ESP_LOGW(kTag, "PINGREQ send failed");
+        return false;
+    }
+
+    const ReadByteResult first = readByte(sock);
+    if (first.status == ReadByteStatus::Timeout) {
+        return true;
+    }
+    if (first.status == ReadByteStatus::Closed) {
+        return false;
     }
 
     int remaining = 0;
@@ -412,9 +505,12 @@ bool mqttLoop(int sock, StreamKind kind)
         return false;
     }
 
-    const uint8_t packet_type = static_cast<uint8_t>(byte) >> 4;
+    const uint8_t packet_type = first.byte >> 4;
     if (packet_type == 3) {
-        return handlePublish(sock, static_cast<uint8_t>(byte), remaining, kind);
+        return handlePublish(sock, first.byte, remaining, kind);
+    }
+    if (packet_type == 13) {
+        notePingResp(keepalive);
     }
     return drainBytes(sock, remaining);
 }
@@ -436,9 +532,18 @@ void mqttTask(void* arg)
         }
 
         ESP_LOGI(kTag, "%s connected to %s:%d", config->name, kMqttHost, kMqttPort);
-        const bool ready = sendConnect(sock, config->client_id) &&
-                           readConnack(sock) &&
-                           sendSubscribe(sock, config->topics, config->topic_count);
+        MqttKeepalive keepalive{};
+        bool ready = sendConnect(sock, config->client_id);
+        if (ready) {
+            noteClientTx(&keepalive, mqttNowMs());
+            ready = readConnack(sock);
+        }
+        if (ready) {
+            ready = sendSubscribe(sock, config->topics, config->topic_count);
+            if (ready) {
+                noteClientTx(&keepalive, mqttNowMs());
+            }
+        }
         if (!ready) {
             ESP_LOGW(kTag, "%s MQTT handshake failed", config->name);
             close(sock);
@@ -448,7 +553,7 @@ void mqttTask(void* arg)
 
         ESP_LOGI(kTag, "%s subscribed to %u topic(s)",
                  config->name, static_cast<unsigned>(config->topic_count));
-        while (ClockNet::getStatus().wifi_connected && mqttLoop(sock, config->kind)) {
+        while (ClockNet::getStatus().wifi_connected && mqttLoop(sock, config->kind, &keepalive)) {
         }
 
         ESP_LOGW(kTag, "%s disconnected", config->name);

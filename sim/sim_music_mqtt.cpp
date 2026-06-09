@@ -43,7 +43,7 @@ std::mutex s_cover_mutex;
 std::atomic<bool> s_started{false};
 SimMusicMqtt::Config s_config;
 std::string s_topic_prefix = "shairport/livingroom/";
-std::string s_subscribe_topic = "shairport/livingroom/#";
+std::vector<std::string> s_subscribe_topics;
 MusicState s_state;
 bool s_has_state = false;
 uint8_t* s_pending_cover_data = nullptr;
@@ -184,8 +184,10 @@ bool sendSubscribe(int sock)
     std::vector<uint8_t> body;
     body.push_back(0);
     body.push_back(1);
-    appendString(body, s_subscribe_topic);
-    body.push_back(0);
+    for (const std::string& topic : s_subscribe_topics) {
+        appendString(body, topic);
+        body.push_back(0);
+    }
 
     std::vector<uint8_t> packet;
     packet.push_back(0x82);
@@ -410,7 +412,7 @@ void mqttThread()
             continue;
         }
 
-        std::cerr << "MQTT subscribed to " << s_subscribe_topic << "\n";
+        std::cerr << "MQTT subscribed to " << s_subscribe_topics.size() << " topic(s)\n";
         while (mqttLoop(sock)) {
         }
 
@@ -436,7 +438,14 @@ void SimMusicMqtt::configure(const Config& config)
     s_config = config;
     const std::string base = normalizedTopic(config.topic);
     s_topic_prefix = base + "/";
-    s_subscribe_topic = base + "/#";
+    s_subscribe_topics = {
+        base + "/title",
+        base + "/artist",
+        base + "/album",
+        base + "/playing",
+        base + "/ssnc/prgr",
+        base + "/cover",
+    };
 }
 
 SimMusicMqtt::Config SimMusicMqtt::parseArgs(int argc, char** argv)
