@@ -3,11 +3,17 @@
 #include "app/services/cover_service.h"
 #include "lvgl.h"
 
+struct RenderedCoverFrame {
+    uint32_t cover_id = 0;
+    const lv_img_dsc_t* image = nullptr;
+    const lv_color_t* pixels = nullptr;
+};
+
 class CoverWidget {
 public:
     void create(lv_obj_t* parent);
     void renderPlaceholder();
-    void renderCover(const BorrowedCover& cover);
+    bool renderDisplayCover(RenderedCoverFrame* out_cover);
     void clear();
 
 private:
@@ -19,6 +25,7 @@ private:
     };
 
     bool ensureBuffers();
+    bool currentCover(RenderedCoverFrame* out_cover) const;
     void hideImages();
 
     lv_obj_t* cover_img_ = nullptr;

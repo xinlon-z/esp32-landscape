@@ -39,12 +39,17 @@ public:
     // Core 1 worker finishes the decode (~250 ms uncontested).
     uint32_t acceptJpeg(uint8_t* data, uint32_t size);
     CoverState active();
-    // Borrowed pointers remain valid only while this cover_id is still active.
+    // Borrowed pointers remain valid only while this cover_id is still retained
+    // as the active or fallback-ready cover.
     bool borrow(uint32_t cover_id, BorrowedCover* cover);
     bool copyPixels(uint32_t cover_id,
                     lv_color_t* dst_pixels,
                     uint32_t dst_pixel_count,
                     lv_img_dsc_t* out_image);
+    bool copyDisplayPixels(lv_color_t* dst_pixels,
+                           uint32_t dst_pixel_count,
+                           lv_img_dsc_t* out_image,
+                           uint32_t* out_cover_id);
     void clear();
 
     // Testing support: drives one pending decode synchronously on the caller's
@@ -71,6 +76,13 @@ private:
     };
 
     static CoverState stateFromEntry(const CoverEntry& entry);
+    static bool isReadyCover(const CoverEntry& entry);
+    static void fillBorrowedCover(const CoverEntry& entry, BorrowedCover* cover);
+    static const CoverEntry* findReadyCover(const CoverEntry& active,
+                                            const CoverEntry& fallback,
+                                            uint32_t cover_id);
+    void moveActiveToFallbackReady();
+    void releaseEntry(CoverEntry& entry);
     void releaseActive();
     void freePendingDecode();
     void ensureDecodeWorkerStarted();
@@ -87,6 +99,7 @@ private:
     mutable std::mutex mutex_;
     uint32_t next_cover_id_ = 0;
     CoverEntry active_{};
+    CoverEntry fallback_ready_{};
 
     SemaphoreHandle_t decode_signal_ = nullptr;
     bool decode_worker_started_ = false;

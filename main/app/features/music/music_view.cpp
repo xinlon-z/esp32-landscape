@@ -219,10 +219,14 @@ void MusicView::render(const MusicDisplayState& state)
     has_last_state_ = true;
 }
 
-void MusicView::renderCover(const BorrowedCover& cover)
+bool MusicView::renderDisplayCover()
 {
+    RenderedCoverFrame cover{};
+    if (!cover_.renderDisplayCover(&cover)) {
+        return false;
+    }
     background_.renderCover(cover);
-    cover_.renderCover(cover);
+    return true;
 }
 
 void MusicView::renderCoverPlaceholder()

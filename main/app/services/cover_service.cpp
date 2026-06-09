@@ -214,6 +214,7 @@ uint32_t CoverService::acceptJpeg(uint8_t* data, uint32_t size)
     uint32_t cover_id = 0;
     {
         std::lock_guard<std::mutex> lock(mutex_);
+        moveActiveToFallbackReady();
         releaseActive();
         cover_id = ++next_cover_id_;
         active_.cover_id = cover_id;
@@ -250,16 +251,21 @@ bool CoverService::borrow(uint32_t cover_id, BorrowedCover* cover)
         return false;
     }
     std::lock_guard<std::mutex> lock(mutex_);
-    if (cover_id == 0 || active_.cover_id != cover_id) {
+    if (cover_id == 0) {
         *cover = BorrowedCover{};
         return false;
     }
-    cover->cover_id = active_.cover_id;
-    cover->status = active_.status;
-    cover->jpeg_data = active_.jpeg_data;
-    cover->jpeg_size = active_.jpeg_size;
-    cover->image = active_.pixels ? &active_.image : nullptr;
-    cover->pixels = active_.pixels;
+    const CoverEntry* entry = nullptr;
+    if (active_.cover_id == cover_id) {
+        entry = &active_;
+    } else if (fallback_ready_.cover_id == cover_id && isReadyCover(fallback_ready_)) {
+        entry = &fallback_ready_;
+    }
+    if (!entry) {
+        *cover = BorrowedCover{};
+        return false;
+    }
+    fillBorrowedCover(*entry, cover);
     return true;
 }
 
@@ -273,22 +279,63 @@ bool CoverService::copyPixels(uint32_t cover_id,
     }
 
     std::lock_guard<std::mutex> lock(mutex_);
-    if (active_.cover_id != cover_id ||
-        active_.status != CoverStatus::Ready ||
-        !active_.pixels) {
+    const CoverEntry* entry = findReadyCover(active_, fallback_ready_, cover_id);
+    if (!entry) {
         return false;
     }
 
-    const uint32_t pixel_count = active_.image.header.w * active_.image.header.h;
+    const uint32_t pixel_count = entry->image.header.w * entry->image.header.h;
     if (pixel_count == 0 || pixel_count > dst_pixel_count) {
         return false;
     }
 
-    memcpy(dst_pixels, active_.pixels, pixel_count * sizeof(lv_color_t));
+    memcpy(dst_pixels, entry->pixels, pixel_count * sizeof(lv_color_t));
     if (out_image) {
-        *out_image = active_.image;
+        *out_image = entry->image;
         out_image->data = reinterpret_cast<const uint8_t*>(dst_pixels);
         out_image->data_size = pixel_count * sizeof(lv_color_t);
+    }
+    return true;
+}
+
+bool CoverService::copyDisplayPixels(lv_color_t* dst_pixels,
+                                     uint32_t dst_pixel_count,
+                                     lv_img_dsc_t* out_image,
+                                     uint32_t* out_cover_id)
+{
+    if (!dst_pixels) {
+        if (out_cover_id) {
+            *out_cover_id = 0;
+        }
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    const CoverEntry* entry = isReadyCover(active_) ? &active_ :
+                              isReadyCover(fallback_ready_) ? &fallback_ready_ : nullptr;
+    if (!entry) {
+        if (out_cover_id) {
+            *out_cover_id = 0;
+        }
+        return false;
+    }
+
+    const uint32_t pixel_count = entry->image.header.w * entry->image.header.h;
+    if (pixel_count == 0 || pixel_count > dst_pixel_count) {
+        if (out_cover_id) {
+            *out_cover_id = 0;
+        }
+        return false;
+    }
+
+    memcpy(dst_pixels, entry->pixels, pixel_count * sizeof(lv_color_t));
+    if (out_image) {
+        *out_image = entry->image;
+        out_image->data = reinterpret_cast<const uint8_t*>(dst_pixels);
+        out_image->data_size = pixel_count * sizeof(lv_color_t);
+    }
+    if (out_cover_id) {
+        *out_cover_id = entry->cover_id;
     }
     return true;
 }
@@ -298,7 +345,7 @@ void CoverService::clear()
     std::lock_guard<std::mutex> lock(mutex_);
     freePendingDecode();
     releaseActive();
-    active_ = CoverEntry{};
+    releaseEntry(fallback_ready_);
 }
 
 CoverState CoverService::stateFromEntry(const CoverEntry& entry)
@@ -312,15 +359,69 @@ CoverState CoverService::stateFromEntry(const CoverEntry& entry)
     return state;
 }
 
-void CoverService::releaseActive()
+bool CoverService::isReadyCover(const CoverEntry& entry)
 {
+    return entry.cover_id != 0 &&
+           entry.status == CoverStatus::Ready &&
+           entry.pixels != nullptr;
+}
+
+void CoverService::fillBorrowedCover(const CoverEntry& entry, BorrowedCover* cover)
+{
+    cover->cover_id = entry.cover_id;
+    cover->status = entry.status;
+    cover->jpeg_data = entry.jpeg_data;
+    cover->jpeg_size = entry.jpeg_size;
+    cover->image = entry.pixels ? &entry.image : nullptr;
+    cover->pixels = entry.pixels;
+}
+
+const CoverService::CoverEntry* CoverService::findReadyCover(const CoverEntry& active,
+                                                             const CoverEntry& fallback,
+                                                             uint32_t cover_id)
+{
+    if (cover_id == 0) {
+        return nullptr;
+    }
+    if (active.cover_id == cover_id && isReadyCover(active)) {
+        return &active;
+    }
+    if (fallback.cover_id == cover_id && isReadyCover(fallback)) {
+        return &fallback;
+    }
+    return nullptr;
+}
+
+void CoverService::moveActiveToFallbackReady()
+{
+    if (!isReadyCover(active_)) {
+        return;
+    }
+
+    releaseEntry(fallback_ready_);
     if (active_.jpeg_data) {
         heap_caps_free(active_.jpeg_data);
+        active_.jpeg_data = nullptr;
+        active_.jpeg_size = 0;
     }
-    if (active_.pixels) {
-        heap_caps_free(active_.pixels);
-    }
+    fallback_ready_ = active_;
     active_ = CoverEntry{};
+}
+
+void CoverService::releaseEntry(CoverEntry& entry)
+{
+    if (entry.jpeg_data) {
+        heap_caps_free(entry.jpeg_data);
+    }
+    if (entry.pixels) {
+        heap_caps_free(entry.pixels);
+    }
+    entry = CoverEntry{};
+}
+
+void CoverService::releaseActive()
+{
+    releaseEntry(active_);
 }
 
 void CoverService::freePendingDecode()
@@ -404,6 +505,7 @@ bool CoverService::runOnePendingDecode()
                 active_.image.header.cf = LV_IMG_CF_TRUE_COLOR;
                 active_.image.data = reinterpret_cast<const uint8_t*>(pixels);
                 active_.image.data_size = kDecodedCoverSize * kDecodedCoverSize * sizeof(lv_color_t);
+                releaseEntry(fallback_ready_);
             }
             stored = true;
         }

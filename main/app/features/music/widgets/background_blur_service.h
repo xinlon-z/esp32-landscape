@@ -8,8 +8,6 @@
 
 #include <stdint.h>
 
-struct BorrowedCover;
-
 class BackgroundBlurService {
 public:
     using ReadyCallback = void (*)(uint32_t cover_id, void* user_data);
@@ -18,7 +16,9 @@ public:
 
     bool tryGetCached(uint32_t cover_id, const lv_img_dsc_t** out_image);
 
-    bool request(const BorrowedCover& cover,
+    bool request(uint32_t cover_id,
+                 const lv_img_dsc_t& source_image,
+                 const lv_color_t* source_pixels,
                  uint16_t target_w,
                  uint16_t target_h,
                  const lv_img_dsc_t** out_image);

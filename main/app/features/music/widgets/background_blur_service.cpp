@@ -2,7 +2,6 @@
 
 #include "app/features/music/util/music_background.h"
 #include "app/features/music/util/music_trace.h"
-#include "app/services/cover_service.h"
 #include "platform/lvgl_port.h"
 
 #include "esp_heap_caps.h"
@@ -62,17 +61,22 @@ bool BackgroundBlurService::tryGetCached(uint32_t cover_id, const lv_img_dsc_t**
     return hit;
 }
 
-bool BackgroundBlurService::request(const BorrowedCover& cover,
+bool BackgroundBlurService::request(uint32_t cover_id,
+                                    const lv_img_dsc_t& source_image,
+                                    const lv_color_t* source_pixels,
                                     uint16_t target_w,
                                     uint16_t target_h,
                                     const lv_img_dsc_t** out_image)
 {
-    if (cover.cover_id == 0 || target_w == 0 || target_h == 0) {
+    const uint16_t src_w = static_cast<uint16_t>(source_image.header.w);
+    const uint16_t src_h = static_cast<uint16_t>(source_image.header.h);
+    if (cover_id == 0 || !source_pixels || src_w == 0 || src_h == 0 ||
+        target_w == 0 || target_h == 0) {
         return false;
     }
 
     xSemaphoreTake(mutex_, portMAX_DELAY);
-    if (cache_cover_id_ == cover.cover_id && cache_.pixels) {
+    if (cache_cover_id_ == cover_id && cache_.pixels) {
         if (out_image) {
             *out_image = &cache_.image;
         }
@@ -80,7 +84,7 @@ bool BackgroundBlurService::request(const BorrowedCover& cover,
         return true;
     }
 
-    if (has_pending_ && pending_.cover_id == cover.cover_id) {
+    if (has_pending_ && pending_.cover_id == cover_id) {
         xSemaphoreGive(mutex_);
         ensureWorkerStarted();
         return false;
@@ -92,31 +96,17 @@ bool BackgroundBlurService::request(const BorrowedCover& cover,
     }
     xSemaphoreGive(mutex_);
 
-    lv_color_t* src_copy = allocPixels(CoverService::kCoverPixelCount);
+    const uint32_t src_pixel_count = static_cast<uint32_t>(src_w) * src_h;
+    lv_color_t* src_copy = allocPixels(src_pixel_count);
     if (!src_copy) {
         ESP_LOGW(kTag, "failed to alloc src copy %ux%u",
-                 CoverService::kCoverSize, CoverService::kCoverSize);
+                 src_w, src_h);
         return false;
     }
-
-    lv_img_dsc_t src_image{};
-    if (!CoverService::get().copyPixels(cover.cover_id,
-                                        src_copy,
-                                        CoverService::kCoverPixelCount,
-                                        &src_image)) {
-        heap_caps_free(src_copy);
-        return false;
-    }
-
-    const uint16_t src_w = static_cast<uint16_t>(src_image.header.w);
-    const uint16_t src_h = static_cast<uint16_t>(src_image.header.h);
-    if (src_w == 0 || src_h == 0) {
-        heap_caps_free(src_copy);
-        return false;
-    }
+    memcpy(src_copy, source_pixels, src_pixel_count * sizeof(lv_color_t));
 
     xSemaphoreTake(mutex_, portMAX_DELAY);
-    pending_.cover_id = cover.cover_id;
+    pending_.cover_id = cover_id;
     pending_.src_pixels = src_copy;
     pending_.src_w = src_w;
     pending_.src_h = src_h;

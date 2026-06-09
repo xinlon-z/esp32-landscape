@@ -29,6 +29,54 @@ uint8_t* makeMinimalJpeg(uint32_t* out_size)
     data[3] = 0xd9;
     return data;
 }
+
+uint32_t seedReadyCover()
+{
+    CoverService& service = CoverService::get();
+    service.releaseActive();
+
+    auto* pixels = static_cast<lv_color_t*>(
+        heap_caps_malloc(CoverService::kCoverPixelCount * sizeof(lv_color_t), MALLOC_CAP_8BIT));
+    if (!pixels) {
+        return 0;
+    }
+    for (uint32_t i = 0; i < CoverService::kCoverPixelCount; ++i) {
+        pixels[i] = lv_color_make(0x20, 0x40, 0x60);
+    }
+
+    const uint32_t cover_id = service.next_cover_id_ + 1;
+    service.next_cover_id_ = cover_id;
+    service.active_.cover_id = cover_id;
+    service.active_.status = CoverStatus::Ready;
+    service.active_.pixels = pixels;
+    service.active_.image.header.always_zero = 0;
+    service.active_.image.header.w = CoverService::kCoverSize;
+    service.active_.image.header.h = CoverService::kCoverSize;
+    service.active_.image.header.cf = LV_IMG_CF_TRUE_COLOR;
+    service.active_.image.data = reinterpret_cast<const uint8_t*>(pixels);
+    service.active_.image.data_size = CoverService::kCoverPixelCount * sizeof(lv_color_t);
+    return cover_id;
+}
+
+bool copyDisplayCoverId(uint32_t* out_cover_id)
+{
+    auto* copied = static_cast<lv_color_t*>(
+        heap_caps_malloc(CoverService::kCoverPixelCount * sizeof(lv_color_t), MALLOC_CAP_8BIT));
+    if (!copied) {
+        return false;
+    }
+    lv_img_dsc_t copied_image{};
+    uint32_t copied_cover_id = 0;
+    const bool ok = CoverService::get().copyDisplayPixels(copied,
+                                                          CoverService::kCoverPixelCount,
+                                                          &copied_image,
+                                                          &copied_cover_id);
+    heap_caps_free(copied);
+    if (out_cover_id) {
+        *out_cover_id = copied_cover_id;
+    }
+    return ok;
+}
 } // namespace
 
 TEST(CoverServiceAsync, AcceptJpegReturnsImmediatelyAsLoading)
@@ -136,4 +184,79 @@ TEST(CoverServiceAsync, SupersededDecodeIsDiscarded)
 
     CoverState s = CoverService::get().active();
     EXPECT_EQ(s.cover_id, id2) << "active cover must be the latest accepted one";
+}
+
+TEST(CoverServiceAsync, ReadyCoverRemainsDisplayableWhileNextCoverLoads)
+{
+    CoverService::get().clear();
+    EventBus::get().resetForTest();
+
+    const uint32_t previous_id = seedReadyCover();
+    ASSERT_GT(previous_id, 0u);
+
+    uint32_t display_cover_id = 0;
+    ASSERT_TRUE(copyDisplayCoverId(&display_cover_id));
+    EXPECT_EQ(display_cover_id, previous_id);
+
+    uint32_t next_size = 0;
+    uint8_t* next_data = makeMinimalJpeg(&next_size);
+    const uint32_t next_id = CoverService::get().acceptJpeg(next_data, next_size);
+    EXPECT_GT(next_id, previous_id);
+
+    CoverState loading = CoverService::get().active();
+    EXPECT_EQ(loading.cover_id, next_id);
+    EXPECT_EQ(loading.status, CoverStatus::Loading);
+
+    ASSERT_TRUE(copyDisplayCoverId(&display_cover_id))
+        << "previous ready cover should remain available while next JPEG decodes";
+    EXPECT_EQ(display_cover_id, previous_id);
+
+    auto* copied = static_cast<lv_color_t*>(
+        heap_caps_malloc(CoverService::kCoverPixelCount * sizeof(lv_color_t), MALLOC_CAP_8BIT));
+    ASSERT_TRUE(copied != nullptr);
+    lv_img_dsc_t copied_image{};
+    EXPECT_TRUE(CoverService::get().copyPixels(previous_id,
+                                               copied,
+                                               CoverService::kCoverPixelCount,
+                                               &copied_image));
+    EXPECT_EQ(copied_image.header.w, CoverService::kCoverSize);
+    heap_caps_free(copied);
+
+    CoverService::get().runOnePendingDecode();
+    CoverState decoded = CoverService::get().active();
+    ASSERT_TRUE(copyDisplayCoverId(&display_cover_id));
+    EXPECT_EQ(display_cover_id,
+              decoded.status == CoverStatus::Ready ? next_id : previous_id)
+        << "failed next decode should keep showing the previous cover";
+}
+
+TEST(CoverServiceAsync, CopyDisplayPixelsSelectsAndCopiesVisibleCoverAtomically)
+{
+    CoverService::get().clear();
+    EventBus::get().resetForTest();
+
+    const uint32_t previous_id = seedReadyCover();
+    ASSERT_GT(previous_id, 0u);
+
+    uint32_t next_size = 0;
+    uint8_t* next_data = makeMinimalJpeg(&next_size);
+    const uint32_t next_id = CoverService::get().acceptJpeg(next_data, next_size);
+    ASSERT_GT(next_id, previous_id);
+
+    auto* copied = static_cast<lv_color_t*>(
+        heap_caps_malloc(CoverService::kCoverPixelCount * sizeof(lv_color_t), MALLOC_CAP_8BIT));
+    ASSERT_TRUE(copied != nullptr);
+
+    lv_img_dsc_t copied_image{};
+    uint32_t copied_cover_id = 0;
+    EXPECT_TRUE(CoverService::get().copyDisplayPixels(copied,
+                                                      CoverService::kCoverPixelCount,
+                                                      &copied_image,
+                                                      &copied_cover_id));
+    EXPECT_EQ(copied_cover_id, previous_id);
+    EXPECT_EQ(copied_image.header.w, CoverService::kCoverSize);
+    EXPECT_EQ(copied_image.data, reinterpret_cast<const uint8_t*>(copied));
+
+    heap_caps_free(copied);
+    CoverService::get().runOnePendingDecode();
 }

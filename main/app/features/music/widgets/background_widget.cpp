@@ -2,7 +2,6 @@
 
 #include "app/features/music/widgets/background_blur_service.h"
 #include "app/features/music/util/music_trace.h"
-#include "app/services/cover_service.h"
 
 namespace {
 constexpr int kScreenW = 640;
@@ -33,9 +32,9 @@ void BackgroundWidget::create(lv_obj_t* parent)
     displayed_cover_id_ = 0;
 }
 
-void BackgroundWidget::renderCover(const BorrowedCover& cover)
+void BackgroundWidget::renderCover(const RenderedCoverFrame& cover)
 {
-    if (!image_obj_ || cover.cover_id == 0) {
+    if (!image_obj_ || cover.cover_id == 0 || !cover.image || !cover.pixels) {
         renderPlaceholder();
         return;
     }
@@ -48,7 +47,12 @@ void BackgroundWidget::renderCover(const BorrowedCover& cover)
 
     requested_cover_id_ = cover.cover_id;
     const lv_img_dsc_t* image = nullptr;
-    const bool cache_hit = BackgroundBlurService::get().request(cover, kScreenW, kScreenH, &image);
+    const bool cache_hit = BackgroundBlurService::get().request(cover.cover_id,
+                                                                *cover.image,
+                                                                cover.pixels,
+                                                                kScreenW,
+                                                                kScreenH,
+                                                                &image);
     MUSIC_TRACE_LOGI(kTraceTag, "[trace] renderCover cover=%u displayed=%u cache_hit=%d",
                      cover.cover_id, displayed_cover_id_, cache_hit ? 1 : 0);
     if (cache_hit && image) {

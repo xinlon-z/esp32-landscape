@@ -27,6 +27,7 @@ add_executable(music_ui_sim
   "${PROJECT_ROOT}/main/app/features/music/music_model.cpp"
   "${PROJECT_ROOT}/main/app/features/music/music_presenter.cpp"
   "${PROJECT_ROOT}/main/app/features/music/music_view.cpp"
+  "${PROJECT_ROOT}/main/app/features/music/widgets/background_blur_service.cpp"
   "${PROJECT_ROOT}/main/app/features/music/widgets/background_image.cpp"
   "${PROJECT_ROOT}/main/app/features/music/widgets/background_widget.cpp"
   "${PROJECT_ROOT}/main/app/features/music/widgets/cover_widget.cpp"
@@ -34,6 +35,7 @@ add_executable(music_ui_sim
   "${PROJECT_ROOT}/main/app/screens/music_screen.cpp"
   "${PROJECT_ROOT}/main/app/services/cover_service.cpp"
   "${PROJECT_ROOT}/main/app/services/mqtt_service.cpp"
+  "${PROJECT_ROOT}/main/app/services/power_service.cpp"
   "${PROJECT_ROOT}/main/app/ui/fonts/music_fonts.cpp")
 
 target_compile_definitions(music_ui_sim PRIVATE
@@ -46,6 +48,7 @@ target_include_directories(music_ui_sim PRIVATE
   "${PROJECT_ROOT}/main"
   "${PROJECT_ROOT}/managed_components/lvgl__lvgl"
   "${PROJECT_ROOT}/managed_components/lvgl__lvgl/src"
+  "${PROJECT_ROOT}/tests/stubs"
   ${SDL2_INCLUDE_DIRS})
 
 target_compile_options(music_ui_sim PRIVATE ${SDL2_CFLAGS_OTHER})

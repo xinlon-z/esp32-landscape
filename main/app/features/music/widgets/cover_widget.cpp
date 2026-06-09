@@ -128,35 +128,32 @@ void CoverWidget::renderPlaceholder()
     }
 }
 
-void CoverWidget::renderCover(const BorrowedCover& cover)
+bool CoverWidget::renderDisplayCover(RenderedCoverFrame* out_cover)
 {
-    if (!slots_[0].image_obj || !slots_[1].image_obj || cover.cover_id == 0) {
+    if (!slots_[0].image_obj || !slots_[1].image_obj) {
         renderPlaceholder();
-        return;
-    }
-    if (cover.cover_id == displayed_cover_id_) {
-        return;
+        return false;
     }
     if (!ensureBuffers()) {
-        if (!has_cover_) {
-            renderPlaceholder();
-        }
-        return;
+        return currentCover(out_cover);
     }
 
     const int next_slot = has_cover_ ? 1 - active_slot_ : active_slot_;
     CoverSlot& next = slots_[next_slot];
     lv_img_cache_invalidate_src(&next.image);
-    if (!CoverService::get().copyPixels(cover.cover_id,
-                                        next.pixels,
-                                        CoverService::kCoverPixelCount,
-                                        &next.image)) {
-        if (!has_cover_) {
-            renderPlaceholder();
-        }
-        return;
+
+    uint32_t cover_id = 0;
+    if (!CoverService::get().copyDisplayPixels(next.pixels,
+                                               CoverService::kCoverPixelCount,
+                                               &next.image,
+                                               &cover_id)) {
+        return false;
     }
-    next.cover_id = cover.cover_id;
+
+    if (cover_id == displayed_cover_id_) {
+        return currentCover(out_cover);
+    }
+    next.cover_id = cover_id;
 
     if (cover_band_) {
         lv_obj_add_flag(cover_band_, LV_OBJ_FLAG_HIDDEN);
@@ -177,13 +174,15 @@ void CoverWidget::renderCover(const BorrowedCover& cover)
         startOpacityAnim(next.image_obj, LV_OPA_TRANSP, LV_OPA_COVER);
         startOpacityAnim(old.image_obj, LV_OPA_COVER, LV_OPA_TRANSP, hideAfterFade);
     } else {
-        startOpacityAnim(next.image_obj, LV_OPA_TRANSP, LV_OPA_COVER);
+        lv_anim_del(next.image_obj, setImageOpacity);
+        setImageOpacity(next.image_obj, LV_OPA_COVER);
     }
 
     active_slot_ = next_slot;
     cover_img_ = next.image_obj;
     has_cover_ = true;
-    displayed_cover_id_ = cover.cover_id;
+    displayed_cover_id_ = cover_id;
+    return currentCover(out_cover);
 }
 
 void CoverWidget::clear()
@@ -213,6 +212,31 @@ bool CoverWidget::ensureBuffers()
         if (!slot.pixels) {
             return false;
         }
+    }
+    return true;
+}
+
+bool CoverWidget::currentCover(RenderedCoverFrame* out_cover) const
+{
+    if (!has_cover_) {
+        if (out_cover) {
+            *out_cover = RenderedCoverFrame{};
+        }
+        return false;
+    }
+
+    const CoverSlot& active = slots_[active_slot_];
+    if (active.cover_id == 0 || !active.pixels || !active.image.data) {
+        if (out_cover) {
+            *out_cover = RenderedCoverFrame{};
+        }
+        return false;
+    }
+
+    if (out_cover) {
+        out_cover->cover_id = active.cover_id;
+        out_cover->image = &active.image;
+        out_cover->pixels = active.pixels;
     }
     return true;
 }

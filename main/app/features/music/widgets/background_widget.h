@@ -1,11 +1,10 @@
 #pragma once
 
 #include "background_image.h"
+#include "cover_widget.h"
 #include "lvgl.h"
 
 #include <stdint.h>
-
-struct BorrowedCover;
 
 class BackgroundWidget {
 public:
@@ -13,7 +12,7 @@ public:
     ~BackgroundWidget();
 
     void create(lv_obj_t* parent);
-    void renderCover(const BorrowedCover& cover);
+    void renderCover(const RenderedCoverFrame& cover);
     void renderPlaceholder();
     void setBlurEnabled(bool enabled);
     void clear();

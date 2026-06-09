@@ -28,7 +28,26 @@ void MusicView::render(const MusicDisplayState& state)
     ++render_count;
     last_rendered = state;
 }
-void MusicView::renderCover(const BorrowedCover&) { ++cover_render_count; }
+bool MusicView::renderDisplayCover()
+{
+    auto* pixels = static_cast<lv_color_t*>(
+        heap_caps_malloc(CoverService::kCoverPixelCount * sizeof(lv_color_t), MALLOC_CAP_8BIT));
+    if (!pixels) {
+        return false;
+    }
+    lv_img_dsc_t image{};
+    uint32_t cover_id = 0;
+    const bool copied = CoverService::get().copyDisplayPixels(pixels,
+                                                              CoverService::kCoverPixelCount,
+                                                              &image,
+                                                              &cover_id);
+    heap_caps_free(pixels);
+    if (copied && cover_id != 0 && image.data) {
+        ++cover_render_count;
+        return true;
+    }
+    return false;
+}
 void MusicView::renderCoverPlaceholder() { ++cover_placeholder_count; }
 void MusicView::setDimmed(bool) {}
 

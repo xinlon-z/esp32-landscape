@@ -11,7 +11,7 @@ public:
     void create();
     void destroy();
     void render(const MusicDisplayState& state);
-    void renderCover(const BorrowedCover& cover);
+    bool renderDisplayCover();
     void renderCoverPlaceholder();
     void setDimmed(bool dimmed);
 
