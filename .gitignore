@@ -1,10 +1,14 @@
 build/
+build-tests/
 build-sim/
 build-fw*/
 managed_components
 managed_components/
+.codegraph/
+.cursor/
 .superpowers/
 .worktrees/
+wallpaper-server/
 main/clock_secrets.h
 main/assets/DroidSansFallbackFull.ttf
 sdkconfig.old

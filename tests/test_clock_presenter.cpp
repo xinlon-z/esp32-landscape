@@ -17,6 +17,7 @@ int g_network_snapshots = 0;
 int g_time_renders = 0;
 int g_battery_renders = 0;
 int g_network_renders = 0;
+int g_background_requests = 0;
 
 ClockDisplayState g_rendered_time{};
 BatteryDisplayState g_rendered_battery{};
@@ -77,8 +78,45 @@ void NetworkService::poll()
     ++g_network_polls;
 }
 
+ClockBackgroundService::ClockBackgroundService() = default;
+
+ClockBackgroundService& ClockBackgroundService::get()
+{
+    static ClockBackgroundService service;
+    return service;
+}
+
+void ClockBackgroundService::requestRefresh()
+{
+    ++g_background_requests;
+}
+
+bool ClockBackgroundService::requestRefreshIfDue()
+{
+    ++g_background_requests;
+    return true;
+}
+
+ClockBackgroundState ClockBackgroundService::snapshot()
+{
+    return ClockBackgroundState{};
+}
+
+bool ClockBackgroundService::copyPixels(lv_color_t*, uint32_t, lv_img_dsc_t*, uint32_t*)
+{
+    return false;
+}
+
+void ClockBackgroundService::clear()
+{
+}
+
 void ClockView::create() {}
 void ClockView::destroy() {}
+lv_color_t* ClockView::backgroundPixels() { return nullptr; }
+void ClockView::setPalette(const ClockForegroundPalette&) {}
+void ClockView::showBackground(const lv_img_dsc_t&) {}
+void ClockView::hideBackground() {}
 
 void ClockView::renderTime(const ClockDisplayState& state, bool dimmed)
 {
@@ -108,6 +146,7 @@ TEST(ClockPresenter, StartAndTick)
     ClockView view;
     ClockPresenter presenter(view);
     presenter.start();
+    EXPECT_EQ(g_background_requests, 1);
 
     if (g_time_polls != 1 || g_power_polls != 1 || g_network_polls != 1) {
         FAIL() << "start did not poll services first: " << g_time_polls << " " << g_power_polls << " " << g_network_polls;
@@ -152,6 +191,7 @@ TEST(ClockPresenter, StartAndTick)
     power_event.payload.power_state.revision = 2;
     EventBus::get().publish(power_event);
     presenter.tick();
+    EXPECT_EQ(g_background_requests, 2);
 
     if (g_time_snapshots != 0 || g_power_snapshots != 1 || g_network_snapshots != 0) {
         FAIL() << "power tick read wrong snapshots: " << g_time_snapshots << " " << g_power_snapshots << " " << g_network_snapshots;
@@ -195,6 +235,7 @@ TEST(ClockPresenter, StartAndTick)
     second_network_event.payload.network_state.revision = 3;
     EventBus::get().publish(second_network_event);
     presenter.tick();
+    EXPECT_EQ(g_background_requests, 2);
 
     if (g_time_snapshots != 0 || g_power_snapshots != 0 || g_network_snapshots != 1) {
         FAIL() << "network tick read wrong snapshots: " << g_time_snapshots << " " << g_power_snapshots << " " << g_network_snapshots;

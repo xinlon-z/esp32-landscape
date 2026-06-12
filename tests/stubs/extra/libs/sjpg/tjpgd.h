@@ -24,13 +24,31 @@ typedef struct {
 typedef size_t (*JpegInputFn)(JDEC*, uint8_t*, size_t);
 typedef int (*JpegOutputFn)(JDEC*, void*, JRECT*);
 
+inline uint16_t& tjpgdStubWidth()
+{
+    static uint16_t width = 2;
+    return width;
+}
+
+inline uint16_t& tjpgdStubHeight()
+{
+    static uint16_t height = 2;
+    return height;
+}
+
+static inline void tjpgdStubSetDimensions(uint16_t width, uint16_t height)
+{
+    tjpgdStubWidth() = width;
+    tjpgdStubHeight() = height;
+}
+
 static inline JRESULT jd_prepare(JDEC* jd, JpegInputFn, void*, size_t, void* device)
 {
     if (!jd || !device) {
         return JDR_ERROR;
     }
-    jd->width = 2;
-    jd->height = 2;
+    jd->width = tjpgdStubWidth();
+    jd->height = tjpgdStubHeight();
     jd->device = device;
     return JDR_OK;
 }

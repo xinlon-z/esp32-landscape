@@ -1,6 +1,7 @@
 #include "clock_presenter.h"
 
 #include "app/core/event/event_bus.h"
+#include "app/services/clock_background_service.h"
 #include "app/services/network_service.h"
 #include "app/services/power_service.h"
 #include "app/services/time_service.h"
@@ -11,6 +12,7 @@ void ClockPresenter::start()
 {
     running_ = true;
     model_.resetBattery();
+    last_background_revision_ = 0;
 
     TimeService::get().poll();
     PowerService::get().poll();
@@ -78,6 +80,8 @@ void ClockPresenter::tick()
     } else if (power_changed) {
         renderCachedNetwork();
     }
+    requestBackgroundIfNeeded();
+    renderBackgroundSnapshot();
 }
 
 void ClockPresenter::renderAll()
@@ -85,6 +89,49 @@ void ClockPresenter::renderAll()
     renderPowerSnapshot();
     renderTimeSnapshot();
     renderNetworkSnapshot();
+    requestBackgroundIfNeeded();
+    renderBackgroundSnapshot();
+}
+
+void ClockPresenter::requestBackgroundIfNeeded()
+{
+    if (!network_state_.wifi_connected) {
+        return;
+    }
+
+    ClockBackgroundService::get().requestRefreshIfDue();
+}
+
+void ClockPresenter::renderBackgroundSnapshot()
+{
+    const ClockBackgroundState state = ClockBackgroundService::get().snapshot();
+    if (state.revision == last_background_revision_) {
+        return;
+    }
+
+    last_background_revision_ = state.revision;
+    if (!state.has_pixels) {
+        return;
+    }
+
+    lv_color_t* dst = view_.backgroundPixels();
+    if (!dst) {
+        return;
+    }
+
+    lv_img_dsc_t image{};
+    uint32_t copied_revision = 0;
+    if (ClockBackgroundService::get().copyPixels(dst,
+                                                 ClockBackgroundService::kPixelCount,
+                                                 &image,
+                                                 &copied_revision)) {
+        last_background_revision_ = copied_revision;
+        view_.setPalette(state.palette);
+        view_.showBackground(image);
+        renderCachedTime();
+        renderPowerSnapshot();
+        renderCachedNetwork();
+    }
 }
 
 void ClockPresenter::renderTimeSnapshot()

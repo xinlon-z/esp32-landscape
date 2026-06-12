@@ -21,6 +21,10 @@ static inline void vTaskDelay(TickType_t)
 {
 }
 
+static inline void vTaskDelete(TaskHandle_t)
+{
+}
+
 static inline int xTaskCreatePinnedToCore(
     void (*)(void*),
     const char*,
@@ -30,5 +34,5 @@ static inline int xTaskCreatePinnedToCore(
     TaskHandle_t*,
     int)
 {
-    return 0;
+    return pdPASS;
 }

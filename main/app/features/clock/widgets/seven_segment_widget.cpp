@@ -1,9 +1,6 @@
 #include "seven_segment_widget.h"
 
 namespace {
-constexpr uint32_t kInk = 0x22282b;
-constexpr uint32_t kDimInk = 0x363b3d;
-
 constexpr bool kDigitMap[10][7] = {
     {true,  true,  true,  false, true,  true,  true },
     {false, false, true,  false, false, true,  false},
@@ -25,7 +22,8 @@ void SevenSegmentWidget::bind(lv_obj_t* segments[7])
     }
 }
 
-void SevenSegmentWidget::render(char value, bool dimmed)
+void SevenSegmentWidget::render(char value, bool dimmed,
+                                uint32_t color, uint32_t dim_color)
 {
     for (int i = 0; i < 7; ++i) {
         bool active = false;
@@ -35,7 +33,8 @@ void SevenSegmentWidget::render(char value, bool dimmed)
             active = i == 3;
         }
         if (segments_[i]) {
-            lv_obj_set_style_bg_color(segments_[i], lv_color_hex(dimmed ? kDimInk : kInk), 0);
+            lv_obj_set_style_bg_color(segments_[i],
+                                      lv_color_hex(dimmed ? dim_color : color), 0);
             lv_obj_set_style_bg_opa(segments_[i], active ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
         }
     }

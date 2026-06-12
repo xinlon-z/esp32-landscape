@@ -67,6 +67,15 @@
 #define LVGL_DMA_BUFF_LEN (LCD_NOROT_HRES * 64 * 2)
 #define LVGL_SPIRAM_BUFF_LEN (EXAMPLE_LCD_H_RES * EXAMPLE_LCD_V_RES * 2)
 
+// Clock wallpaper endpoint and periodic refresh interval.
+#ifndef CLOCK_BACKGROUND_URL
+#define CLOCK_BACKGROUND_URL "http://esp32-bg.lan/random-clock"
+#endif
+
+#ifndef CLOCK_BACKGROUND_REFRESH_INTERVAL_MS
+#define CLOCK_BACKGROUND_REFRESH_INTERVAL_MS (5u * 60u * 1000u)
+#endif
+
 
 
 

@@ -23,8 +23,11 @@ private:
     uint32_t last_time_revision_ = 0;
     uint32_t last_power_revision_ = 0;
     uint32_t last_network_revision_ = 0;
+    uint32_t last_background_revision_ = 0;
 
     void renderAll();
+    void requestBackgroundIfNeeded();
+    void renderBackgroundSnapshot();
     void renderTimeSnapshot();
     void renderPowerSnapshot();
     void renderNetworkSnapshot();

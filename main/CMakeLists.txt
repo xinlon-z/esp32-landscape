@@ -13,7 +13,6 @@ idf_component_register(
        "app/features/clock/clock_model.cpp"
        "app/features/clock/clock_presenter.cpp"
        "app/features/clock/clock_view.cpp"
-       "app/features/clock/widgets/seven_segment_widget.cpp"
        "app/features/music/music_model.cpp"
        "app/features/music/music_presenter.cpp"
        "app/features/music/music_view.cpp"
@@ -23,6 +22,7 @@ idf_component_register(
        "app/features/music/widgets/cover_widget.cpp"
        "app/features/music/widgets/visualizer_widget.cpp"
        "app/ui/fonts/music_fonts.cpp"
+       "app/ui/fonts/clock_fonts.cpp"
        "app/screens/gesture_manager.cpp"
        "app/screens/clock_screen.cpp"
        "app/screens/music_screen.cpp"
@@ -32,8 +32,10 @@ idf_component_register(
        "app/services/network_service.cpp"
        "app/services/mqtt_service.cpp"
        "app/services/cover_service.cpp"
+       "app/services/clock_background_service.cpp"
   REQUIRES i2c_bsp i2c_equipment adc_bsp lcd_bl_pwm_bsp
            esp_wifi esp_event esp_netif nvs_flash lwip
+           esp_http_client
            esp_driver_usb_serial_jtag esp_timer esp_lcd driver
            SensorLib esp_lcd_axs15231b
   INCLUDE_DIRS "."
