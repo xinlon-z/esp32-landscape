@@ -46,6 +46,8 @@ clock_test(test_power_mgr_idle_mode)
 clock_test(test_power_service)
 clock_test(test_time_service)
 clock_test(test_screen_nav)
+clock_test(test_backlight_policy)
+clock_test(test_lvgl_task_config)
 clock_test(test_lvgl_rotation)
 clock_test(test_cover_scale)
 

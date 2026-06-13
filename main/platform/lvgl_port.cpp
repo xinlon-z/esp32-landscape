@@ -1,5 +1,6 @@
 #include "lvgl_port.h"
 #include "lvgl_rotation.h"
+#include "lvgl_task_config.h"
 
 #include <string.h>
 
@@ -128,11 +129,22 @@ void LvglPort::tickCb(void*)
 
 void LvglPort::portTask(void*)
 {
+    TickType_t last_stack_log = 0;
     for (;;) {
         uint32_t delay = EXAMPLE_LVGL_TASK_MAX_DELAY_MS;
         if (lock(-1)) {
             delay = lv_timer_handler();
             unlock();
+        }
+        const UBaseType_t stack_high_water_words = uxTaskGetStackHighWaterMark(nullptr);
+        const uint32_t stack_high_water_bytes =
+            static_cast<uint32_t>(stack_high_water_words) * sizeof(StackType_t);
+        const TickType_t now = xTaskGetTickCount();
+        if (stack_high_water_bytes < lvglStackWarnBytes()) {
+            ESP_LOGW(kTag, "lvgl stack high water: %u bytes", stack_high_water_bytes);
+        } else if (now - last_stack_log >= pdMS_TO_TICKS(5000)) {
+            ESP_LOGI(kTag, "lvgl stack high water: %u bytes", stack_high_water_bytes);
+            last_stack_log = now;
         }
         if (delay > EXAMPLE_LVGL_TASK_MAX_DELAY_MS) delay = EXAMPLE_LVGL_TASK_MAX_DELAY_MS;
         if (delay < EXAMPLE_LVGL_TASK_MIN_DELAY_MS) delay = EXAMPLE_LVGL_TASK_MIN_DELAY_MS;
@@ -245,7 +257,9 @@ esp_err_t LvglPort::init()
     s_mux = xSemaphoreCreateMutex();
     if (!s_mux) return ESP_ERR_NO_MEM;
 
-    BaseType_t created = xTaskCreatePinnedToCore(portTask, "lvgl", 4096, nullptr, 4, nullptr, 0);
+    BaseType_t created = xTaskCreatePinnedToCore(portTask, "lvgl",
+                                                 lvglTaskStackBytes(),
+                                                 nullptr, 4, nullptr, 0);
     if (created != pdPASS) return ESP_FAIL;
 
     s_initialized = true;

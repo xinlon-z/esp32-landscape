@@ -7,8 +7,10 @@
 #include "i2c_equipment.h"
 #include "lcd_bl_pwm_bsp.h"
 #include "lvgl.h"
+#include "platform/backlight_policy.h"
 #include "platform/lvgl_port.h"
 #include "platform/power_mgr.h"
+#include "platform/sd_card_service.h"
 #include "app/services/mqtt_service.h"
 #include "app/screens/screen_manager.h"
 #include "platform/touch_drv.h"
@@ -16,8 +18,9 @@
 
 extern "C" void app_main(void)
 {
-    lcd_bl_pwm_bsp_init(LCD_PWM_MODE_255);
+    lcd_bl_pwm_bsp_init(initialBacklightDuty());
     i2c_master_Init();
+    SdCardService::init();
     adc_bsp_init();
     PowerManager::init();
     i2c_rtc_setup();
@@ -36,5 +39,6 @@ extern "C" void app_main(void)
 
     if (LvglPort::Guard g; g) {
         ScreenManager::instance().create();
+        setUpduty(activeBacklightDuty());
     }
 }

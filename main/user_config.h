@@ -76,6 +76,32 @@
 #define CLOCK_BACKGROUND_REFRESH_INTERVAL_MS (5u * 60u * 1000u)
 #endif
 
+// SD card storage. Mounted for future features; UI fonts currently use the
+// embedded subset bundled into the firmware.
+#ifndef SD_CARD_MOUNT_POINT
+#define SD_CARD_MOUNT_POINT "/sdcard"
+#endif
+
+#ifndef SD_CARD_POWER_EXIO_PIN
+#define SD_CARD_POWER_EXIO_PIN 1
+#endif
+
+#ifndef SD_CARD_POWER_ENABLE_LEVEL
+#define SD_CARD_POWER_ENABLE_LEVEL 1
+#endif
+
+#ifndef SD_CARD_D0_GPIO
+#define SD_CARD_D0_GPIO GPIO_NUM_40
+#endif
+
+#ifndef SD_CARD_CLK_GPIO
+#define SD_CARD_CLK_GPIO GPIO_NUM_41
+#endif
+
+#ifndef SD_CARD_CMD_GPIO
+#define SD_CARD_CMD_GPIO GPIO_NUM_39
+#endif
+
 
 
 

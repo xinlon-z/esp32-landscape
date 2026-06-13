@@ -1,9 +1,12 @@
 #include <stdio.h>
 #include "lcd_bl_pwm_bsp.h"
 #include "esp_err.h"
+#include "esp_log.h"
 #include "driver/ledc.h"
 #include "driver/gpio.h"
 #include "user_config.h"
+
+static const char* TAG = "lcd_bl";
 
 void gpio_init(void)
 {
@@ -36,12 +39,29 @@ void lcd_bl_pwm_bsp_init(uint16_t duty)
     .duty = duty,   //占空比
     .hpoint = 0,    //相位
   };
-  ESP_ERROR_CHECK_WITHOUT_ABORT(ledc_timer_config(&timer_conf));
-  ESP_ERROR_CHECK_WITHOUT_ABORT(ledc_channel_config(&ledc_conf));
+  esp_err_t err = ledc_timer_config(&timer_conf);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "LEDC timer config failed: %s", esp_err_to_name(err));
+  }
+  err = ledc_channel_config(&ledc_conf);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "LEDC channel config failed: %s", esp_err_to_name(err));
+  } else {
+    ESP_LOGI(TAG, "backlight PWM initialized: gpio=%d duty=%u", EXAMPLE_PIN_NUM_BK_LIGHT, duty);
+  }
 }
 
 void setUpduty(uint16_t duty)
 {
-  ESP_ERROR_CHECK_WITHOUT_ABORT(ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1, duty));
-  ESP_ERROR_CHECK_WITHOUT_ABORT(ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1));
+  esp_err_t err = ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1, duty);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "set backlight duty failed: %s", esp_err_to_name(err));
+    return;
+  }
+  err = ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "update backlight duty failed: %s", esp_err_to_name(err));
+  } else {
+    ESP_LOGI(TAG, "backlight duty updated: %u", duty);
+  }
 }

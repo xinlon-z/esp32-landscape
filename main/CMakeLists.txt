@@ -4,6 +4,7 @@ idf_component_register(
        "platform/lvgl_rotation.cpp"
        "platform/touch_drv.cpp"
        "platform/power_mgr.cpp"
+       "platform/sd_card_service.cpp"
        "platform/clock_net.cpp"
        "platform/music_mqtt.cpp"
        "app/features/music/util/music_background.cpp"
@@ -37,6 +38,6 @@ idf_component_register(
            esp_wifi esp_event esp_netif nvs_flash lwip
            esp_http_client
            esp_driver_usb_serial_jtag esp_timer esp_lcd driver
-           SensorLib esp_lcd_axs15231b
+           fatfs sdmmc esp_driver_sdmmc SensorLib esp_lcd_axs15231b
   INCLUDE_DIRS "."
   EMBED_FILES "assets/NotoSansSCSubset.ttf")
