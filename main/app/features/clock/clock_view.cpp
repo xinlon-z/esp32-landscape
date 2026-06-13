@@ -11,8 +11,8 @@ constexpr int kScreenW          = ClockBackgroundService::kWidth;
 constexpr int kScreenH          = 172;
 constexpr int kBatteryInnerW    = 38;
 constexpr int kTimeAreaW        = 420;
-constexpr lv_opa_t kTimeTextOpa = 210;
-constexpr lv_opa_t kTimeTextDimOpa = 150;
+constexpr lv_opa_t kTimeTextOpa = LV_OPA_COVER;
+constexpr lv_opa_t kTimeTextDimOpa = LV_OPA_COVER;
 
 lv_obj_t* makeLabel(lv_obj_t* parent, const char* text,
                     const lv_font_t* font, uint32_t color)
@@ -95,7 +95,7 @@ void ClockView::setPalette(const ClockForegroundPalette& palette)
 {
     palette_ = palette;
     if (divider_) {
-        lv_obj_set_style_bg_color(divider_, lv_color_hex(palette_.faint), 0);
+        lv_obj_set_style_bg_color(divider_, lv_color_hex(palette_.fg), 0);
     }
 }
 
@@ -129,6 +129,9 @@ void ClockView::renderTime(const ClockDisplayState& state, bool dimmed)
     setLabelColor(time_label_, label_color);
     setLabelOpacity(time_label_, label_opa);
     lv_label_set_text(time_label_, state.time);
+    if (divider_) {
+        lv_obj_set_style_bg_color(divider_, lv_color_hex(label_color), 0);
+    }
 
     setLabelColor(weekday_label_, label_color);
     setLabelColor(date_label_, label_color);
@@ -217,7 +220,7 @@ void ClockView::create()
     lv_obj_set_size(divider_, 1, 112);
     lv_obj_set_pos(divider_, 420, 30);
     lv_obj_set_style_bg_color(divider_, lv_color_hex(palette_.faint), 0);
-    lv_obj_set_style_bg_opa(divider_, LV_OPA_70, 0);
+    lv_obj_set_style_bg_opa(divider_, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(divider_, 0, 0);
     lv_obj_clear_flag(divider_, LV_OBJ_FLAG_SCROLLABLE);
 

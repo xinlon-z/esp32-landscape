@@ -1,5 +1,6 @@
 #include "clock_fonts.h"
 
+#include "clock_glyph_mask.h"
 #include "esp_log.h"
 #include "extra/libs/tiny_ttf/lv_tiny_ttf.h"
 
@@ -149,7 +150,22 @@ const uint8_t* clockTabularGlyphBitmap(const lv_font_t* font, uint32_t letter)
     if (!dsc || !dsc->base || letter == ' ') {
         return nullptr;
     }
-    return lv_font_get_glyph_bitmap(dsc->base, letter);
+    const uint8_t* bitmap = lv_font_get_glyph_bitmap(dsc->base, letter);
+    if (!bitmap || dsc->base != s_clock_time_base_font) {
+        return bitmap;
+    }
+
+    lv_font_glyph_dsc_t glyph{};
+    if (!lv_font_get_glyph_dsc(dsc->base, &glyph, letter, 0) || glyph.bpp != 8) {
+        return bitmap;
+    }
+
+    auto* mutable_bitmap = const_cast<uint8_t*>(bitmap);
+    const uint32_t pixel_count = static_cast<uint32_t>(glyph.box_w) * glyph.box_h;
+    for (uint32_t i = 0; i < pixel_count; ++i) {
+        mutable_bitmap[i] = clockGlyphMaskOpacity(mutable_bitmap[i]);
+    }
+    return bitmap;
 }
 
 lv_font_t* createClockFont(uint16_t size)

@@ -59,6 +59,16 @@ lv_obj_t* findClockTimeLabel()
     return labels.front();
 }
 
+lv_obj_t* findDivider()
+{
+    auto& objects = lvglStubState().objects;
+    auto it = std::find_if(objects.begin(), objects.end(), [](const lv_obj_t* obj) {
+        return obj && obj->kind == lv_obj_t::Kind::Object &&
+               obj->x == 420 && obj->y == 30 && obj->w == 1 && obj->h == 112;
+    });
+    return it == objects.end() ? nullptr : *it;
+}
+
 void expectTimeLabelStyle(lv_obj_t* label, const char* text, uint32_t color, lv_opa_t opa)
 {
     const ClockFontVisualMetrics metrics = clockTimeFontMetrics();
@@ -103,7 +113,7 @@ TEST(ClockViewPalette, AppliesPaletteToDateWeekdayAndBatteryText)
     lvglStubState().reset();
 }
 
-TEST(ClockViewPalette, RendersMainTimeAsSingleFixedTranslucentLabel)
+TEST(ClockViewPalette, RendersMainTimeAsSingleFixedOpaqueLabel)
 {
     lvglStubState().reset();
 
@@ -120,11 +130,40 @@ TEST(ClockViewPalette, RendersMainTimeAsSingleFixedTranslucentLabel)
     view.setPalette(palette);
     view.renderTime(makeTimeState(), false);
     lv_obj_t* time_label = findClockTimeLabel();
-    expectTimeLabelStyle(time_label, "09:05", palette.fg, 210);
+    expectTimeLabelStyle(time_label, "09:05", palette.fg, LV_OPA_COVER);
 
     view.renderTime(makeTimeState(), true);
     EXPECT_EQ(findClockTimeLabel(), time_label);
-    expectTimeLabelStyle(time_label, "09:05", palette.dim, 150);
+    expectTimeLabelStyle(time_label, "09:05", palette.dim, LV_OPA_COVER);
+
+    view.destroy();
+    lvglStubState().reset();
+}
+
+TEST(ClockViewPalette, RendersDividerOpaqueAndMatchesTimeColor)
+{
+    lvglStubState().reset();
+
+    ClockView view;
+    view.create();
+
+    ClockForegroundPalette palette{};
+    palette.fg = 0xf7f8fa;
+    palette.dim = 0x22282b;
+    palette.muted = 0x778899;
+    palette.faint = 0x445566;
+    palette.accent = 0x8fe8c5;
+
+    view.setPalette(palette);
+    view.renderTime(makeTimeState(), false);
+    lv_obj_t* divider = findDivider();
+    ASSERT_NE(divider, nullptr);
+    EXPECT_EQ(divider->bg_color, lv_color_hex(palette.fg));
+    EXPECT_EQ(divider->bg_opa, LV_OPA_COVER);
+
+    view.renderTime(makeTimeState(), true);
+    EXPECT_EQ(divider->bg_color, lv_color_hex(palette.dim));
+    EXPECT_EQ(divider->bg_opa, LV_OPA_COVER);
 
     view.destroy();
     lvglStubState().reset();
