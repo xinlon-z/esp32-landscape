@@ -5,20 +5,36 @@
 #include "esp_err.h"
 #include "i2c_bsp.h"
 #include "power_mgr.h"
+#include "platform/touch_frame_filter.h"
 #include "user_config.h"
 
 namespace {
 // The AXS15231B touch driver reports one point as an 8-byte frame.
 // Reading a longer frame can leave stale bytes that look like ghost touches.
+TouchFrameFilter s_touch_filter;
+constexpr uint8_t kTouchCmdLen = 11;
 constexpr uint8_t kMaxTouchPoints = 1;
 constexpr uint8_t kTouchDataLen = kMaxTouchPoints * 6 + 2;
-constexpr uint8_t kValidFramesBeforePress = 2;
-uint8_t s_valid_frame_count = 0;
+
+void mapToLvglPoint(uint16_t raw_x, uint16_t raw_y, lv_point_t* point)
+{
+#if (Rotated == USER_DISP_ROT_NONO)
+    if (raw_x > EXAMPLE_LCD_V_RES) raw_x = EXAMPLE_LCD_V_RES;
+    if (raw_y > EXAMPLE_LCD_H_RES) raw_y = EXAMPLE_LCD_H_RES;
+    point->x = static_cast<lv_coord_t>(raw_y);
+    point->y = static_cast<lv_coord_t>(EXAMPLE_LCD_V_RES - raw_x);
+#else
+    if (raw_x > EXAMPLE_LCD_H_RES) raw_x = EXAMPLE_LCD_H_RES;
+    if (raw_y > EXAMPLE_LCD_V_RES) raw_y = EXAMPLE_LCD_V_RES;
+    point->x = static_cast<lv_coord_t>(EXAMPLE_LCD_H_RES - raw_x);
+    point->y = static_cast<lv_coord_t>(EXAMPLE_LCD_V_RES - raw_y);
+#endif
+}
 } // namespace
 
 void TouchDriver::readCb(lv_indev_drv_t*, lv_indev_data_t* data)
 {
-    uint8_t cmd[11] = {
+    uint8_t cmd[kTouchCmdLen] = {
         0xb5, 0xab, 0xa5, 0x5a,
         0x0, 0x0, 0x0, kTouchDataLen,
         0x0, 0x0, 0x0,
@@ -32,41 +48,15 @@ void TouchDriver::readCb(lv_indev_drv_t*, lv_indev_data_t* data)
     if (ret != ESP_OK) {
         ESP_ERROR_CHECK_WITHOUT_ABORT(ret);
         data->state = LV_INDEV_STATE_REL;
-        s_valid_frame_count = 0;
+        s_touch_filter.reset();
         return;
     }
 
-    const uint8_t point_count = buf[1];
-    const bool valid_point_count = point_count > 0 && point_count <= kMaxTouchPoints;
-    if (valid_point_count && s_valid_frame_count < kValidFramesBeforePress) {
-        ++s_valid_frame_count;
-    } else if (!valid_point_count) {
-        s_valid_frame_count = 0;
-    }
-
-    const bool pressed = valid_point_count && s_valid_frame_count >= kValidFramesBeforePress;
-    if (pressed) {
-        uint16_t x = (static_cast<uint16_t>(buf[2] & 0x0f) << 8) | buf[3];
-        uint16_t y = (static_cast<uint16_t>(buf[4] & 0x0f) << 8) | buf[5];
-
-#if (Rotated == USER_DISP_ROT_NONO)
-        if (x > EXAMPLE_LCD_V_RES) x = EXAMPLE_LCD_V_RES;
-        if (y > EXAMPLE_LCD_H_RES) y = EXAMPLE_LCD_H_RES;
-#else
-        if (x > EXAMPLE_LCD_H_RES) x = EXAMPLE_LCD_H_RES;
-        if (y > EXAMPLE_LCD_V_RES) y = EXAMPLE_LCD_V_RES;
-#endif
-
+    const TouchFrameResult touch = s_touch_filter.process(buf);
+    if (touch.state == TouchFrameState::Pressed) {
         data->state = LV_INDEV_STATE_PR;
         PowerManager::noteActivity();
-
-#if (Rotated == USER_DISP_ROT_NONO)
-        data->point.x = static_cast<lv_coord_t>(y);
-        data->point.y = static_cast<lv_coord_t>(EXAMPLE_LCD_V_RES - x);
-#else
-        data->point.x = static_cast<lv_coord_t>(EXAMPLE_LCD_H_RES - x);
-        data->point.y = static_cast<lv_coord_t>(EXAMPLE_LCD_V_RES - y);
-#endif
+        mapToLvglPoint(touch.x, touch.y, &data->point);
     } else {
         data->state = LV_INDEV_STATE_REL;
     }

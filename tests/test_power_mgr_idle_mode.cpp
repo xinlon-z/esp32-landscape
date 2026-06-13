@@ -24,11 +24,13 @@ TEST(PowerMgrIdleMode, ComputeIdleMode)
     };
 
     const Case cases[] = {
-        {false, 29999, PowerManager::IdleMode::Active},
-        {false, 30000, PowerManager::IdleMode::Dimmed},
-        {false, 299999, PowerManager::IdleMode::Dimmed},
-        {false, 300000, PowerManager::IdleMode::Sleeping},
-        {true,  300000, PowerManager::IdleMode::Active},
+        {false, 299999, PowerManager::IdleMode::Active},
+        {false, 300000, PowerManager::IdleMode::Dimmed},
+        {false, 419999, PowerManager::IdleMode::Dimmed},
+        {false, 420000, PowerManager::IdleMode::ScreenOff},
+        {false, 719999, PowerManager::IdleMode::ScreenOff},
+        {false, 720000, PowerManager::IdleMode::Sleeping},
+        {true,  720000, PowerManager::IdleMode::Active},
         {false, 0,      PowerManager::IdleMode::Active},
     };
 

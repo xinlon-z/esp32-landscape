@@ -8,6 +8,7 @@
 #include "lcd_bl_pwm_bsp.h"
 #include "lvgl.h"
 #include "platform/backlight_policy.h"
+#include "platform/button_mgr.h"
 #include "platform/lvgl_port.h"
 #include "platform/power_mgr.h"
 #include "platform/sd_card_service.h"
@@ -15,6 +16,20 @@
 #include "app/screens/screen_manager.h"
 #include "platform/touch_drv.h"
 #include "user_config.h"
+
+namespace {
+
+void requestButtonToggleScreen()
+{
+    ScreenManager::instance().requestButtonAction(ButtonActionId::ToggleScreen);
+}
+
+void requestButtonGoHome()
+{
+    ScreenManager::instance().requestButtonAction(ButtonActionId::GoHome);
+}
+
+} // namespace
 
 extern "C" void app_main(void)
 {
@@ -41,4 +56,9 @@ extern "C" void app_main(void)
         ScreenManager::instance().create();
         setUpduty(activeBacklightDuty());
     }
+
+    ButtonManager::init(ButtonManagerCallbacks{
+        requestButtonToggleScreen,
+        requestButtonGoHome,
+    });
 }

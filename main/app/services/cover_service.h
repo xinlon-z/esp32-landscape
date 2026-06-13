@@ -52,10 +52,9 @@ public:
                            uint32_t* out_cover_id);
     void clear();
 
-    // Testing support: drives one pending decode synchronously on the caller's
-    // thread. In production the Core 1 worker calls this; tests use it to avoid
-    // the no-op xTaskCreatePinnedToCore stub and verify post-decode state.
+#if !defined(ESP_PLATFORM)
     bool tickDecodeForTest() { return runOnePendingDecode(); }
+#endif
 
 private:
     CoverService();

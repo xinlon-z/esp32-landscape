@@ -11,6 +11,7 @@ public:
     enum class IdleMode {
         Active,
         Dimmed,
+        ScreenOff,
         Sleeping,
     };
 
@@ -18,6 +19,7 @@ public:
         bool external_power  = false;
         int  battery_percent = -1;  // -1 = unknown
         bool dimmed          = false;
+        bool screen_off      = false;
         bool sleeping        = false;
     };
 
@@ -29,6 +31,15 @@ public:
     // Called from the LVGL touch callback (Core 0) to reset the inactivity
     // dim timer. Thread-safe: increments a relaxed atomic counter.
     static void noteActivity();
+
+    // Manual controls used by hardware buttons. requestManualSleep() turns
+    // the display off while keeping the app alive; requestWake() clears that
+    // override and resumes normal active behavior.
+    static void requestWake();
+    static void requestManualSleep();
+    static void requestPowerOff();
+    static bool isSleeping();
+    static bool isDisplayOff();
 
     // Returns a consistent snapshot of all power state fields in O(1) with
     // a single relaxed atomic load. Safe to call from any context.

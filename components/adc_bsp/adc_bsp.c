@@ -1,9 +1,5 @@
-#include <stdio.h>
 #include "adc_bsp.h"
-#include "esp_log.h"
 #include "esp_adc/adc_oneshot.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 
 static adc_cali_handle_t cali_handle;
 static adc_oneshot_unit_handle_t adc1_handle;
@@ -62,17 +58,4 @@ esp_err_t adc_get_value(float *value,int *data)
         }
         return err;
     }
-}
-/*test demo*/
-void adc_example(void* parmeter)
-{
-  	adc_bsp_init();
-  	int adcdata = 0;
-  	float _vol = 0;
-  	for(;;)
-  	{
-  	  	adc_get_value(&_vol,&adcdata);
-  	  	printf("adc value:%d,batt voltage:%f\n",adcdata,_vol);
-  	  	vTaskDelay(pdMS_TO_TICKS(1000));
-  	}
 }

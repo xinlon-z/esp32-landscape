@@ -8,7 +8,6 @@
 
 extern i2c_master_dev_handle_t disp_touch_dev_handle;
 extern i2c_master_dev_handle_t rtc_dev_handle;
-extern i2c_master_dev_handle_t imu_dev_handle;
 extern i2c_master_dev_handle_t exio_dev_handle;
 
 #ifdef __cplusplus

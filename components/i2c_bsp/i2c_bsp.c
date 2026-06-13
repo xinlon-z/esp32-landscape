@@ -10,7 +10,6 @@ static i2c_master_bus_handle_t user_i2c_port0_handle = NULL;
 static i2c_master_bus_handle_t user_i2c_port1_handle = NULL;
 i2c_master_dev_handle_t disp_touch_dev_handle = NULL;
 i2c_master_dev_handle_t rtc_dev_handle = NULL;
-i2c_master_dev_handle_t imu_dev_handle = NULL;
 i2c_master_dev_handle_t exio_dev_handle = NULL;
 
 
@@ -52,9 +51,6 @@ void i2c_master_Init(void)
   };
   dev_cfg.device_address = EXAMPLE_RTC_ADDR;
   ESP_ERROR_CHECK(i2c_master_bus_add_device(user_i2c_port0_handle, &dev_cfg, &rtc_dev_handle));
-
-  dev_cfg.device_address = EXAMPLE_IMU_ADDR;
-  ESP_ERROR_CHECK(i2c_master_bus_add_device(user_i2c_port0_handle, &dev_cfg, &imu_dev_handle));
 
   dev_cfg.device_address = EXAMPLE_EXIO_ADDR;
   ESP_ERROR_CHECK(i2c_master_bus_add_device(user_i2c_port0_handle, &dev_cfg, &exio_dev_handle));

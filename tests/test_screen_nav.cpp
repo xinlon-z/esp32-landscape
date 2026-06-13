@@ -17,6 +17,17 @@ TEST(ScreenNav, SwipeAndTransition)
     EXPECT_EQ(nextScreenForSwipe(ScreenId::Clock, SwipeDirection::None), ScreenId::Clock) << "clock none ignored";
     EXPECT_EQ(nextScreenForSwipe(ScreenId::Music, SwipeDirection::None), ScreenId::Music) << "music none ignored";
 
+    EXPECT_EQ(nextScreenForButtonAction(ScreenId::Clock, ButtonActionId::ToggleScreen), ScreenId::Music)
+        << "button toggle from clock";
+    EXPECT_EQ(nextScreenForButtonAction(ScreenId::Music, ButtonActionId::ToggleScreen), ScreenId::Clock)
+        << "button toggle from music";
+    EXPECT_EQ(nextScreenForButtonAction(ScreenId::Music, ButtonActionId::GoHome), ScreenId::Clock)
+        << "button home from music";
+    EXPECT_EQ(nextScreenForButtonAction(ScreenId::Clock, ButtonActionId::GoHome), ScreenId::Clock)
+        << "button home from clock";
+    EXPECT_EQ(nextScreenForButtonAction(ScreenId::Music, ButtonActionId::None), ScreenId::Music)
+        << "button none ignored";
+
     SwipeGestureDetector detector;
     detector.press({200, 100});
     EXPECT_EQ(detector.release({40, 110}), SwipeDirection::Left) << "detector left swipe failed";

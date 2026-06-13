@@ -27,6 +27,13 @@ function(clock_test name)
     gtest_discover_tests(${name})
 endfunction()
 
+add_executable(test_touch_frame_filter
+    test_touch_frame_filter.cpp
+    ${MAIN}/platform/touch_frame_filter.cpp)
+target_include_directories(test_touch_frame_filter PRIVATE ${TEST_INCLUDES})
+target_link_libraries(test_touch_frame_filter GTest::gtest_main)
+gtest_discover_tests(test_touch_frame_filter)
+
 clock_test(test_event_queue)
 clock_test(test_event_bus)
 clock_test(test_mqtt_service_music_parse)
@@ -44,6 +51,7 @@ clock_test(test_clock_view_palette)
 clock_test(test_clock_background_service)
 clock_test(test_power_mgr_voltage)
 clock_test(test_power_mgr_idle_mode)
+clock_test(test_power_mgr_manual)
 clock_test(test_power_service)
 clock_test(test_time_service)
 clock_test(test_screen_nav)
@@ -51,7 +59,21 @@ clock_test(test_backlight_policy)
 clock_test(test_lvgl_task_config)
 clock_test(test_lvgl_rotation)
 clock_test(test_cover_scale)
-clock_test(test_touch_drv)
+clock_test(test_button_state)
+
+add_executable(test_touch_drv
+    test_touch_drv.cpp
+    ${MAIN}/platform/touch_frame_filter.cpp)
+target_include_directories(test_touch_drv PRIVATE ${TEST_INCLUDES})
+target_link_libraries(test_touch_drv GTest::gtest_main)
+gtest_discover_tests(test_touch_drv)
+
+add_executable(test_button_mgr
+    test_button_mgr.cpp
+    ${MAIN}/platform/button_mgr.cpp)
+target_include_directories(test_button_mgr PRIVATE ${TEST_INCLUDES})
+target_link_libraries(test_button_mgr GTest::gtest_main)
+gtest_discover_tests(test_button_mgr)
 
 # Separate compilation: music_presenter.cpp and music_model.cpp both define
 # kFramesPerSecond in anonymous namespaces, which collide in a single TU.
