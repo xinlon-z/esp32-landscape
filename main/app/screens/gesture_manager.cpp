@@ -177,6 +177,17 @@ ScreenId nextScreenForSwipe(ScreenId current, SwipeDirection direction)
     return current;
 }
 
+ScreenId nextScreenForButtonAction(ScreenId current, ButtonActionId action)
+{
+    if (action == ButtonActionId::ToggleScreen) {
+        return current == ScreenId::Clock ? ScreenId::Music : ScreenId::Clock;
+    }
+    if (action == ButtonActionId::GoHome) {
+        return ScreenId::Clock;
+    }
+    return current;
+}
+
 void publishFeatureAction(ScreenId screen, uint8_t action_id)
 {
     AppEvent event{};

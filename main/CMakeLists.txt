@@ -5,6 +5,7 @@ idf_component_register(
        "platform/touch_drv.cpp"
        "platform/touch_frame_filter.cpp"
        "platform/power_mgr.cpp"
+       "platform/button_mgr.cpp"
        "platform/sd_card_service.cpp"
        "platform/clock_net.cpp"
        "platform/music_mqtt.cpp"

@@ -15,7 +15,21 @@ esp_err_t i2c_master_touch_write_read(i2c_master_dev_handle_t dev_handle,
                                       uint8_t* readBuf,
                                       size_t readLen);
 
-static inline esp_err_t i2c_exio_set_output(uint8_t, bool)
+inline uint8_t& i2cExioLastPin()
 {
+    static uint8_t pin = 0xff;
+    return pin;
+}
+
+inline bool& i2cExioLastLevel()
+{
+    static bool level = false;
+    return level;
+}
+
+static inline esp_err_t i2c_exio_set_output(uint8_t pin, bool level)
+{
+    i2cExioLastPin() = pin;
+    i2cExioLastLevel() = level;
     return ESP_OK;
 }

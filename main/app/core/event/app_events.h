@@ -17,6 +17,12 @@ enum class AppEventType : uint8_t {
     FeatureAction,
 };
 
+enum class ButtonActionId : uint8_t {
+    None = 0,
+    ToggleScreen = 1,
+    GoHome = 2,
+};
+
 enum class CoverStatus : uint8_t {
     Idle,
     Loading,

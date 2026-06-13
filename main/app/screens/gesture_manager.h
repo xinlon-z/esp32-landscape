@@ -53,4 +53,5 @@ private:
 
 SwipeDirection detectSwipe(TouchPoint start, TouchPoint end);
 ScreenId nextScreenForSwipe(ScreenId current, SwipeDirection direction);
+ScreenId nextScreenForButtonAction(ScreenId current, ButtonActionId action);
 void publishFeatureAction(ScreenId screen, uint8_t action_id);

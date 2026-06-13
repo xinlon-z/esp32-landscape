@@ -88,11 +88,23 @@ void ScreenManager::destroy()
 
 void ScreenManager::tick()
 {
+    const ButtonActionId button_action = static_cast<ButtonActionId>(
+        pending_button_action_.exchange(static_cast<uint8_t>(ButtonActionId::None),
+                                        std::memory_order_relaxed));
+    if (button_action != ButtonActionId::None) {
+        handleButtonAction(button_action);
+    }
+
     if (current_ == ScreenId::Clock) {
         clock_.onTick();
     } else {
         music_.onTick();
     }
+}
+
+void ScreenManager::requestButtonAction(ButtonActionId action)
+{
+    pending_button_action_.store(static_cast<uint8_t>(action), std::memory_order_relaxed);
 }
 
 void ScreenManager::attachGestureHandler(lv_obj_t* root)
@@ -301,6 +313,16 @@ void ScreenManager::handleSwipe(SwipeDirection swipe)
 
     clearGestureFeedback();
     switchTo(target);
+}
+
+void ScreenManager::handleButtonAction(ButtonActionId action)
+{
+    const ScreenId target = nextScreenForButtonAction(current_, action);
+    if (target != current_) {
+        switchTo(target);
+    } else {
+        clearGestureFeedback();
+    }
 }
 
 void ScreenManager::switchTo(ScreenId target)
