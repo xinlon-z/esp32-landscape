@@ -12,6 +12,8 @@ namespace {
 // Reading a longer frame can leave stale bytes that look like ghost touches.
 constexpr uint8_t kMaxTouchPoints = 1;
 constexpr uint8_t kTouchDataLen = kMaxTouchPoints * 6 + 2;
+constexpr uint8_t kValidFramesBeforePress = 2;
+uint8_t s_valid_frame_count = 0;
 } // namespace
 
 void TouchDriver::readCb(lv_indev_drv_t*, lv_indev_data_t* data)
@@ -30,11 +32,20 @@ void TouchDriver::readCb(lv_indev_drv_t*, lv_indev_data_t* data)
     if (ret != ESP_OK) {
         ESP_ERROR_CHECK_WITHOUT_ABORT(ret);
         data->state = LV_INDEV_STATE_REL;
+        s_valid_frame_count = 0;
         return;
     }
 
     const uint8_t point_count = buf[1];
-    if (point_count > 0 && point_count <= kMaxTouchPoints) {
+    const bool valid_point_count = point_count > 0 && point_count <= kMaxTouchPoints;
+    if (valid_point_count && s_valid_frame_count < kValidFramesBeforePress) {
+        ++s_valid_frame_count;
+    } else if (!valid_point_count) {
+        s_valid_frame_count = 0;
+    }
+
+    const bool pressed = valid_point_count && s_valid_frame_count >= kValidFramesBeforePress;
+    if (pressed) {
         uint16_t x = (static_cast<uint16_t>(buf[2] & 0x0f) << 8) | buf[3];
         uint16_t y = (static_cast<uint16_t>(buf[4] & 0x0f) << 8) | buf[5];
 

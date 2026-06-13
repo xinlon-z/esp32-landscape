@@ -51,6 +51,7 @@ clock_test(test_backlight_policy)
 clock_test(test_lvgl_task_config)
 clock_test(test_lvgl_rotation)
 clock_test(test_cover_scale)
+clock_test(test_touch_drv)
 
 # Separate compilation: music_presenter.cpp and music_model.cpp both define
 # kFramesPerSecond in anonymous namespaces, which collide in a single TU.

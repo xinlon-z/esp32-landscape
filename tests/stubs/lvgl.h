@@ -9,6 +9,24 @@
 
 typedef unsigned short lv_color_t;
 typedef unsigned char lv_opa_t;
+typedef int16_t lv_coord_t;
+
+struct lv_indev_drv_t {};
+
+enum {
+    LV_INDEV_STATE_REL = 0,
+    LV_INDEV_STATE_PR = 1,
+};
+
+struct lv_point_t {
+    lv_coord_t x = 0;
+    lv_coord_t y = 0;
+};
+
+struct lv_indev_data_t {
+    lv_point_t point{};
+    int state = LV_INDEV_STATE_REL;
+};
 
 struct lv_font_t {
     int line_height = 0;

@@ -20,7 +20,7 @@ private:
 
     void detachGestureHandler();
     void switchTo(ScreenId target);
-    void handleSwipe(SwipeDirection swipe, const SwipeGestureStats& stats);
+    void handleSwipe(SwipeDirection swipe);
     void ensureGestureOverlay();
     void updateGestureFeedback(const SwipeGestureProgress& progress);
     void clearGestureFeedback();

@@ -3,11 +3,8 @@
 #include <stdint.h>
 
 #include "app/screens/gesture_feedback_model.h"
-#include "esp_log.h"
 
 namespace {
-
-constexpr const char* kTag = "screen_mgr";
 
 void enableTouchEvents(lv_obj_t* obj, bool bubble_to_parent)
 {
@@ -36,22 +33,6 @@ TouchPoint currentTouchPoint()
         lv_indev_get_point(indev, &point);
     }
     return TouchPoint{static_cast<int16_t>(point.x), static_cast<int16_t>(point.y)};
-}
-
-const char* screenName(ScreenId screen)
-{
-    return screen == ScreenId::Clock ? "clock" : "music";
-}
-
-const char* swipeName(SwipeDirection swipe)
-{
-    if (swipe == SwipeDirection::Left) {
-        return "left";
-    }
-    if (swipe == SwipeDirection::Right) {
-        return "right";
-    }
-    return "none";
 }
 
 SwipeDirection swipeFromLvglDir(lv_dir_t dir)
@@ -177,7 +158,7 @@ void ScreenManager::onGestureEvent(lv_event_t* event)
         const SwipeDirection swipe = manager->swipe_detector_.classify(point, tick, &stats);
         if (swipe == lvgl_swipe) {
             manager->swipe_detector_.reset();
-            manager->handleSwipe(swipe, stats);
+            manager->handleSwipe(swipe);
             lv_indev_wait_release(indev);
         }
     } else if (code == LV_EVENT_RELEASED) {
@@ -187,7 +168,7 @@ void ScreenManager::onGestureEvent(lv_event_t* event)
         if (swipe == SwipeDirection::None) {
             manager->clearGestureFeedback();
         }
-        manager->handleSwipe(swipe, stats);
+        manager->handleSwipe(swipe);
     } else if (code == LV_EVENT_PRESS_LOST) {
         manager->swipe_detector_.reset();
         manager->clearGestureFeedback();
@@ -310,18 +291,13 @@ void ScreenManager::clearGestureOverlayPointers()
     gesture_screen_root_ = nullptr;
 }
 
-void ScreenManager::handleSwipe(SwipeDirection swipe, const SwipeGestureStats& stats)
+void ScreenManager::handleSwipe(SwipeDirection swipe)
 {
     const ScreenId target = nextScreenForSwipe(current_, swipe);
     if (target == current_) {
         clearGestureFeedback();
         return;
     }
-
-    ESP_LOGI(kTag, "switch %s -> %s by swipe %s dx=%d dy=%d dt=%lu samples=%u edge=%d",
-             screenName(current_), screenName(target), swipeName(swipe),
-             stats.dx, stats.dy, static_cast<unsigned long>(stats.duration_ms),
-             static_cast<unsigned>(stats.samples), stats.edge_start ? 1 : 0);
 
     clearGestureFeedback();
     switchTo(target);

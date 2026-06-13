@@ -129,7 +129,7 @@ void LvglPort::tickCb(void*)
 
 void LvglPort::portTask(void*)
 {
-    TickType_t last_stack_log = 0;
+    TickType_t last_stack_warn = 0;
     for (;;) {
         uint32_t delay = EXAMPLE_LVGL_TASK_MAX_DELAY_MS;
         if (lock(-1)) {
@@ -140,11 +140,10 @@ void LvglPort::portTask(void*)
         const uint32_t stack_high_water_bytes =
             static_cast<uint32_t>(stack_high_water_words) * sizeof(StackType_t);
         const TickType_t now = xTaskGetTickCount();
-        if (stack_high_water_bytes < lvglStackWarnBytes()) {
+        if (stack_high_water_bytes < lvglStackWarnBytes() &&
+            now - last_stack_warn >= pdMS_TO_TICKS(5000)) {
             ESP_LOGW(kTag, "lvgl stack high water: %u bytes", stack_high_water_bytes);
-        } else if (now - last_stack_log >= pdMS_TO_TICKS(5000)) {
-            ESP_LOGI(kTag, "lvgl stack high water: %u bytes", stack_high_water_bytes);
-            last_stack_log = now;
+            last_stack_warn = now;
         }
         if (delay > EXAMPLE_LVGL_TASK_MAX_DELAY_MS) delay = EXAMPLE_LVGL_TASK_MAX_DELAY_MS;
         if (delay < EXAMPLE_LVGL_TASK_MIN_DELAY_MS) delay = EXAMPLE_LVGL_TASK_MIN_DELAY_MS;
