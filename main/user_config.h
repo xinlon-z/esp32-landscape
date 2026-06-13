@@ -37,21 +37,12 @@
 /*ADDR*/
 #define EXAMPLE_RTC_ADDR 0x51
 
-#define EXAMPLE_IMU_ADDR 0x6b
-
 #define EXAMPLE_EXIO_ADDR 0x20
 
 
 #define USER_DISP_ROT_90    1
 #define USER_DISP_ROT_NONO  0
 #define Rotated USER_DISP_ROT_90   //软件实现旋转
-
-
-/*bl test*/
-#define Backlight_Testing 0
-
-
-
 
 
 #if (Rotated == USER_DISP_ROT_NONO)

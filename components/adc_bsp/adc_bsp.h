@@ -8,7 +8,6 @@ extern "C" {
 #endif
 
 void adc_bsp_init(void);
-void adc_example(void* parmeter);
 esp_err_t adc_get_value(float *value,int *data);
 
 #ifdef __cplusplus

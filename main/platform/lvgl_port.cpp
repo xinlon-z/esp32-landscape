@@ -142,7 +142,7 @@ void LvglPort::portTask(void*)
         const TickType_t now = xTaskGetTickCount();
         if (stack_high_water_bytes < lvglStackWarnBytes() &&
             now - last_stack_warn >= pdMS_TO_TICKS(5000)) {
-            ESP_LOGW(kTag, "lvgl stack high water: %u bytes", stack_high_water_bytes);
+            ESP_LOGW(kTag, "low LVGL stack margin: %u bytes free", stack_high_water_bytes);
             last_stack_warn = now;
         }
         if (delay > EXAMPLE_LVGL_TASK_MAX_DELAY_MS) delay = EXAMPLE_LVGL_TASK_MAX_DELAY_MS;

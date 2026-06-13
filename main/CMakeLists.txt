@@ -3,6 +3,7 @@ idf_component_register(
        "platform/lvgl_port.cpp"
        "platform/lvgl_rotation.cpp"
        "platform/touch_drv.cpp"
+       "platform/touch_frame_filter.cpp"
        "platform/power_mgr.cpp"
        "platform/sd_card_service.cpp"
        "platform/clock_net.cpp"
