@@ -2,7 +2,7 @@
 
 #include <stdint.h>
 
-constexpr uint8_t kClockGlyphMaskMinVisibleAlpha = 32;
+constexpr uint8_t kClockGlyphMaskMinVisibleAlpha = 4;
 
 inline uint8_t clockGlyphMaskOpacity(uint8_t alpha)
 {
