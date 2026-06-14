@@ -23,6 +23,7 @@ static const int   kDeepSleepAfterScreenOffMs = 5 * 60 * 1000;
 static const int   kSleepTimeoutMs = kScreenOffTimeoutMs + kDeepSleepAfterScreenOffMs;
 static const int   kTaskPeriodMs  = 500;
 static const int   kBatSampleEvery = 5;  // ADC read every 5 × 500 ms = 2.5 s
+static const uint8_t kExternalPowerDebounceSamples = 3;
 static constexpr float kBatEmptyVoltage = 3.30f;
 static constexpr float kBatFullVoltage  = 4.125f;
 
@@ -73,7 +74,9 @@ static int backlightDutyFor(PowerManager::IdleMode mode)
     case PowerManager::IdleMode::ScreenOff:
         return LCD_PWM_MODE_0;
     case PowerManager::IdleMode::Dimmed:
-        return LCD_PWM_MODE_150;
+        // Intermediate backlight PWM levels produce visible flicker on this board.
+        // Keep hardware backlight stable and let UI widgets use their dimmed style.
+        return LCD_PWM_MODE_255;
     case PowerManager::IdleMode::Active:
     default:
         return LCD_PWM_MODE_255;
@@ -184,6 +187,26 @@ static uint32_t updateScreenOffElapsedMs(PowerManager::IdleMode idle_mode,
     return static_cast<uint32_t>((now - *screen_off_since) * portTICK_PERIOD_MS);
 }
 
+static bool updateStableExternalPower(bool raw_ext,
+                                      bool* stable_ext,
+                                      bool* last_raw_ext,
+                                      uint8_t* same_count)
+{
+    if (raw_ext == *last_raw_ext) {
+        if (*same_count < kExternalPowerDebounceSamples) {
+            ++(*same_count);
+        }
+    } else {
+        *last_raw_ext = raw_ext;
+        *same_count = 1;
+    }
+
+    if (raw_ext != *stable_ext && *same_count >= kExternalPowerDebounceSamples) {
+        *stable_ext = raw_ext;
+    }
+    return *stable_ext;
+}
+
 static void forceActivity()
 {
     s_activity_seq.fetch_add(1, std::memory_order_relaxed);
@@ -268,6 +291,9 @@ void PowerManager::task(void*)
     TickType_t last_active = xTaskGetTickCount();
     bool screen_off_active = false;
     TickType_t screen_off_since = 0;
+    bool stable_ext = init_state.external_power;
+    bool last_raw_ext = stable_ext;
+    uint8_t ext_same_count = kExternalPowerDebounceSamples;
 
     for (;;) {
         const TickType_t now = xTaskGetTickCount();
@@ -285,7 +311,10 @@ void PowerManager::task(void*)
             bat_percent = sampleBattery(&bat_filtered);
         }
 
-        const bool ext = checkExternalPower();
+        const bool ext = updateStableExternalPower(checkExternalPower(),
+                                                   &stable_ext,
+                                                   &last_raw_ext,
+                                                   &ext_same_count);
         const uint32_t idle_ms = static_cast<uint32_t>(
             (now - last_active) * portTICK_PERIOD_MS);
         const IdleMode idle_mode = s_manual_screen_off.load(std::memory_order_relaxed)

@@ -1,8 +1,6 @@
 #ifndef LCD_BL_PWM_BSP_H
 #define LCD_BL_PWM_BSP_H
 
-
-
 #define  LCD_PWM_MODE_0   (0xff-0)
 #define  LCD_PWM_MODE_25  (0xff-25)
 #define  LCD_PWM_MODE_50  (0xff-50)

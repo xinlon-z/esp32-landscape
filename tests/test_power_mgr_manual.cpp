@@ -79,12 +79,31 @@ TEST_F(PowerMgrManualTest, DeepSleepPolicyIsBatteryOnlyAfterScreenOffWindow)
     EXPECT_FALSE(shouldEnterDeepSleep(true, PowerManager::IdleMode::Sleeping, 0));
 }
 
-TEST_F(PowerMgrManualTest, DimmedBacklightUsesVisibleIntermediateDuty)
+TEST_F(PowerMgrManualTest, DimmedBacklightAvoidsIntermediatePwmDuty)
 {
     EXPECT_EQ(backlightDutyFor(PowerManager::IdleMode::Active), LCD_PWM_MODE_255);
-    EXPECT_EQ(backlightDutyFor(PowerManager::IdleMode::Dimmed), LCD_PWM_MODE_150);
+    EXPECT_EQ(backlightDutyFor(PowerManager::IdleMode::Dimmed), LCD_PWM_MODE_255);
     EXPECT_EQ(backlightDutyFor(PowerManager::IdleMode::ScreenOff), LCD_PWM_MODE_0);
     EXPECT_EQ(backlightDutyFor(PowerManager::IdleMode::Sleeping), LCD_PWM_MODE_0);
+}
+
+TEST_F(PowerMgrManualTest, ExternalPowerRequiresStableSamplesBeforeChanging)
+{
+    bool stable_ext = false;
+    bool last_raw_ext = false;
+    uint8_t same_count = kExternalPowerDebounceSamples;
+
+    EXPECT_FALSE(updateStableExternalPower(true, &stable_ext, &last_raw_ext, &same_count));
+    EXPECT_FALSE(updateStableExternalPower(false, &stable_ext, &last_raw_ext, &same_count));
+    EXPECT_FALSE(updateStableExternalPower(true, &stable_ext, &last_raw_ext, &same_count));
+    EXPECT_FALSE(updateStableExternalPower(true, &stable_ext, &last_raw_ext, &same_count));
+    EXPECT_TRUE(updateStableExternalPower(true, &stable_ext, &last_raw_ext, &same_count));
+
+    EXPECT_TRUE(updateStableExternalPower(false, &stable_ext, &last_raw_ext, &same_count));
+    EXPECT_TRUE(updateStableExternalPower(true, &stable_ext, &last_raw_ext, &same_count));
+    EXPECT_TRUE(updateStableExternalPower(false, &stable_ext, &last_raw_ext, &same_count));
+    EXPECT_TRUE(updateStableExternalPower(false, &stable_ext, &last_raw_ext, &same_count));
+    EXPECT_FALSE(updateStableExternalPower(false, &stable_ext, &last_raw_ext, &same_count));
 }
 
 TEST_F(PowerMgrManualTest, ScreenOffElapsedHandlesTickZeroStart)
