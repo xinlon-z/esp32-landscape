@@ -22,6 +22,7 @@ extern "C" {
 
 void lcd_bl_pwm_bsp_init(uint16_t duty);
 void setUpduty(uint16_t duty);
+void lcd_bl_prepare_deep_sleep(void);
 
 #ifdef __cplusplus
 }

@@ -24,6 +24,7 @@ protected:
         s_packed.store(encode(false, 77, false, false, false), std::memory_order_relaxed);
         i2cExioLastPin() = 0xff;
         i2cExioLastLevel() = true;
+        lcdBlPrepareDeepSleepCount() = 0;
     }
 };
 
@@ -107,7 +108,7 @@ TEST_F(PowerMgrManualTest, ScreenOffElapsedHandlesTickZeroStart)
     EXPECT_TRUE(shouldEnterDeepSleep(false, PowerManager::IdleMode::ScreenOff, 300000));
 }
 
-TEST_F(PowerMgrManualTest, EnterDeepSleepUsesPwrLowWakeSource)
+TEST_F(PowerMgrManualTest, EnterDeepSleepHoldsBacklightOffAndUsesPwrLowWakeSource)
 {
     espSleepReset();
 
@@ -115,6 +116,7 @@ TEST_F(PowerMgrManualTest, EnterDeepSleepUsesPwrLowWakeSource)
 
     EXPECT_EQ(espSleepExt1WakeMask(), 1ULL << 16);
     EXPECT_EQ(espSleepExt1WakeMode(), ESP_EXT1_WAKEUP_ANY_LOW);
+    EXPECT_EQ(lcdBlPrepareDeepSleepCount(), 1);
     EXPECT_EQ(espDeepSleepStartCount(), 1);
 }
 
@@ -125,5 +127,6 @@ TEST_F(PowerMgrManualTest, EnterDeepSleepDoesNotStartIfWakeConfigFails)
 
     enterDeepSleep();
 
+    EXPECT_EQ(lcdBlPrepareDeepSleepCount(), 0);
     EXPECT_EQ(espDeepSleepStartCount(), 0);
 }

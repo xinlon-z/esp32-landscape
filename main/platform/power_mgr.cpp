@@ -159,6 +159,7 @@ static void enterDeepSleep()
                  kPowerSenseGpio, esp_err_to_name(err));
         return;
     }
+    lcd_bl_prepare_deep_sleep();
     esp_deep_sleep_start();
 }
 
